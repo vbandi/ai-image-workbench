@@ -43,6 +43,22 @@ class ClipboardManager:
             print(f"Error copying image to clipboard: {e}")
             return False
     
+    def get_image_from_clipboard(self) -> Image.Image | None:
+        """
+        Get a PIL Image from the system clipboard.
+        
+        Returns:
+            PIL Image if successful, None otherwise
+        """
+        try:
+            if sys.platform.startswith('win'):
+                return self._get_from_clipboard_windows()
+            else:
+                return None
+        except Exception as e:
+            print(f"Error getting image from clipboard: {e}")
+            return None
+    
     def _copy_to_clipboard_windows(self, image: Image.Image):
         """
         Copy a PIL Image to the Windows clipboard as CF_DIB (100% scale).
@@ -115,6 +131,68 @@ class ClipboardManager:
         finally:
             if h_global:
                 kernel32.GlobalFree(h_global)
+    
+    def _get_from_clipboard_windows(self) -> Image.Image | None:
+        """
+        Get a PIL Image from the Windows clipboard.
+        Supports CF_DIB format.
+        """
+        CF_DIB = 8
+        CF_BITMAP = 2
+        
+        user32 = ctypes.windll.user32
+        kernel32 = ctypes.windll.kernel32
+        gdi32 = ctypes.windll.gdi32
+        
+        # Define arg/restypes
+        user32.OpenClipboard.argtypes = [wintypes.HWND]
+        user32.OpenClipboard.restype = wintypes.BOOL
+        user32.GetClipboardData.argtypes = [wintypes.UINT]
+        user32.GetClipboardData.restype = wintypes.HANDLE
+        user32.CloseClipboard.argtypes = []
+        user32.CloseClipboard.restype = wintypes.BOOL
+        
+        kernel32.GlobalLock.argtypes = [wintypes.HGLOBAL]
+        kernel32.GlobalLock.restype = ctypes.c_void_p
+        kernel32.GlobalUnlock.argtypes = [wintypes.HGLOBAL]
+        kernel32.GlobalUnlock.restype = wintypes.BOOL
+        kernel32.GlobalSize.argtypes = [wintypes.HGLOBAL]
+        kernel32.GlobalSize.restype = ctypes.c_size_t
+        
+        # Try to open clipboard
+        for _ in range(5):
+            if user32.OpenClipboard(None):
+                break
+            time.sleep(0.01)
+        else:
+            raise RuntimeError('OpenClipboard failed')
+        
+        try:
+            # Try CF_DIB first
+            h_data = user32.GetClipboardData(CF_DIB)
+            if h_data:
+                p_data = kernel32.GlobalLock(h_data)
+                if p_data:
+                    try:
+                        size = kernel32.GlobalSize(h_data)
+                        dib_data = ctypes.string_at(p_data, size)
+                        # Convert DIB to BMP by adding BMP header
+                        bmp_header = b'BM' + (len(dib_data) + 14).to_bytes(4, 'little') + b'\x00\x00\x00\x00\x36\x00\x00\x00'
+                        bmp_data = bmp_header + dib_data
+                        return Image.open(io.BytesIO(bmp_data))
+                    finally:
+                        kernel32.GlobalUnlock(h_data)
+            
+            # If no DIB, try CF_BITMAP
+            h_bitmap = user32.GetClipboardData(CF_BITMAP)
+            if h_bitmap:
+                # This is more complex, would need to convert HBITMAP to DIB
+                # For now, return None if DIB not available
+                pass
+                
+            return None
+        finally:
+            user32.CloseClipboard()
     
     def is_clipboard_supported(self) -> bool:
         """
