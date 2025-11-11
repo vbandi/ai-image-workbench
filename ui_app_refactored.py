@@ -257,10 +257,10 @@ class ImageGeneratorApp:
             self._update_image_display()
             self.status_label.config(text="Ready (Cached image)")
         else:
-            # Generate with the new model if there's a current prompt
+            # Generate with the new model immediately
             current_prompt = self.prompt_input.get_text()
             if current_prompt:
-                self.manual_generate()
+                self._start_generation(current_prompt)
     
     def _on_key_release(self, event):
         """Handle key release events for auto-generation."""
@@ -492,7 +492,6 @@ class ImageGeneratorApp:
         """Generate an image in a background thread."""
         start_time = time.time()
         try:
-            self.generation_queue.is_generating = True
             LOGGER.debug("Background thread running generate_image for model=%s", model)
             image = generate_image(model, prompt)
             LOGGER.debug("Background thread completed generate_image for model=%s", model)
@@ -627,13 +626,20 @@ class ImageGeneratorApp:
         if result_type == "success" and model and result.get("image") is not None:
             image = result["image"]
             generation_time = result.get("time", 0.0)
-            self.current_image = image
+            # Cache the generated image
             self.model_image_cache[model] = image
-            self.image_display_manager.processor.reset_view()
-            self.image_display_manager.set_image(image)
-            self._update_image_display()
+            # Update model button to show tick
             self.model_selection.set_model_generated(model)
-            self.status_label.config(text=f"Ready (Generated in {generation_time:.1f}s)")
+            # Only switch to display the image if this model is still selected
+            if model == self.model_selection.get_selected_model():
+                self.current_image = image
+                self.image_display_manager.processor.reset_view()
+                self.image_display_manager.set_image(image)
+                self._update_image_display()
+                self.status_label.config(text=f"Ready (Generated in {generation_time:.1f}s)")
+            else:
+                # Update status to show completion without switching
+                self.status_label.config(text=f"Completed {model} in {generation_time:.1f}s")
             LOGGER.debug("Single generation success handled for model=%s", model)
         elif result_type == "error" and model:
             error_msg = result.get("error", "Unknown error")

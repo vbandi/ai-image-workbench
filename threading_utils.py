@@ -109,8 +109,8 @@ class GenerationQueueManager:
     def __init__(self):
         """Initialize the generation queue manager."""
         self.prompt_queue = queue.Queue()
-        self.is_generating = False
-        self.current_thread: Optional[threading.Thread] = None
+        self.threads: List[threading.Thread] = []
+        self.lock = threading.Lock()
         # Parallel generation state
         self.parallel_threads: List[threading.Thread] = []
         self.parallel_results: "queue.Queue[Dict[str, Any]]" = queue.Queue()
@@ -156,21 +156,21 @@ class GenerationQueueManager:
             target_function: The function to run in the thread
             args: Arguments to pass to the function
         """
-        if self.current_thread and self.current_thread.is_alive():
-            return False
-            
-        self.is_generating = True
-        self.current_thread = threading.Thread(target=target_function, args=args, daemon=True)
-        self.current_thread.start()
+        with self.lock:
+            thread = threading.Thread(target=target_function, args=args, daemon=True)
+            self.threads.append(thread)
+            thread.start()
         return True
     
     def finish_generation(self):
         """Mark the current generation as finished."""
-        self.is_generating = False
+        with self.lock:
+            self.threads = [t for t in self.threads if t.is_alive()]
     
     def is_currently_generating(self) -> bool:
         """Check if currently generating an image."""
-        return self.is_generating
+        with self.lock:
+            return any(t.is_alive() for t in self.threads)
     
     def wait_for_completion(self, timeout: Optional[float] = None):
         """
