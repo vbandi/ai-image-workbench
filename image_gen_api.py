@@ -41,6 +41,7 @@ MODELS = [
     "fal-ai/bytedance/seedream/v4/text-to-image",
     "fal-ai/wan/v2.2-5b/text-to-image",
     "fal-ai/gemini-25-flash-image",
+    "fal-ai/gemini-3-pro-image-preview",
     "fal-ai/nano-banana",
     "fal-ai/qwen-image",
     "bria/fibo/generate",
@@ -226,6 +227,25 @@ def _parse_bria_fibo_response(result: Dict[str, Any]) -> bytes:
     raise ValueError(f"Could not extract image from BRIA FIBO response: {result}")
 
 
+def _parse_gemini_3_pro_response(result: Dict[str, Any]) -> bytes:
+    """Parse Gemini 3 Pro Image Preview response format."""
+    if "images" in result and isinstance(result["images"], list) and len(result["images"]) > 0:
+        image_obj = result["images"][0]
+        if isinstance(image_obj, dict) and "url" in image_obj:
+            image_url = image_obj["url"]
+            if image_url.startswith("data:"):
+                # Handle data URI
+                return base64.b64decode(image_url.split(",")[1])
+            else:
+                # Handle regular URL
+                response = requests.get(image_url)
+                return response.content
+        else:
+            raise ValueError(f"Unexpected Gemini 3 Pro Image format: {image_obj}")
+    else:
+        raise ValueError(f"Could not extract image from Gemini 3 Pro Image response: {result}")
+
+
 def _parse_standard_response(result: Dict[str, Any]) -> bytes:
     """Parse standard response format."""
     image_data = result["images"][0]
@@ -364,6 +384,16 @@ def submit_image_generation(model: str, prompt: str):
                 # "steps_num": 50,
             }
         )
+    elif model == "fal-ai/gemini-3-pro-image-preview":
+        return fal_client.submit(
+            model,
+            arguments={
+                "prompt": prompt,
+                "num_images": 1,
+                "aspect_ratio": "4:3",
+                "sync_mode": True
+            }
+        )
     else:
         # Standard handling for other models
         return fal_client.submit(
@@ -471,6 +501,8 @@ def poll_generation_result(handle, model: str):
                 decoded_image = _parse_qwen_image_response(result)
             elif model == "bria/fibo/generate":
                 decoded_image = _parse_bria_fibo_response(result)
+            elif model == "fal-ai/gemini-3-pro-image-preview":
+                decoded_image = _parse_gemini_3_pro_response(result)
             else:
                 # Standard handling for other models
                 decoded_image = _parse_standard_response(result)

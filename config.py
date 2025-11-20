@@ -34,6 +34,7 @@ MODEL_CATEGORIES = {
         "fal-ai/bytedance/seedream/v4/text-to-image",
         "fal-ai/wan/v2.2-5b/text-to-image",
         "fal-ai/gemini-25-flash-image",
+        "fal-ai/gemini-3-pro-image-preview",
         "fal-ai/nano-banana",
         "fal-ai/qwen-image",
         "bria/fibo/generate"
@@ -67,6 +68,7 @@ MODEL_ABBREVIATIONS = {
     "Bytedance Seedream V4 Text To Image": "Seedream v4",
     "Wan V2.2-5B Text To Image": "WAN v2.2",
     "Gemini 25 Flash Image": "Gemini Flash",
+    "Gemini 3 Pro Image Preview": "Gemini 3 Pro",
     "Nano Banana": "Nano Banana",
     "Qwen Image": "Qwen Image",
     # BRIA models
