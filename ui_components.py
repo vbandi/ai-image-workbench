@@ -9,7 +9,8 @@ from typing import Optional, Callable, Dict, Any
 from config import (
     MODEL_CATEGORIES, MODEL_ABBREVIATIONS, SPINNER_FRAMES,
     BACKGROUND_COLOR, SELECTED_BUTTON_COLOR, HOVER_BUTTON_COLOR,
-    ACTIVE_BUTTON_COLOR, BASE_FONT, BUTTON_FONT, BUTTON_BOLD_FONT
+    ACTIVE_BUTTON_COLOR, BASE_FONT, BUTTON_FONT, BUTTON_BOLD_FONT,
+    ACCENT_COLOR, ACCENT_HOVER_COLOR, TEXT_COLOR, PROMPT_FONT, HEADER_FONT
 )
 
 
@@ -32,16 +33,59 @@ class ModelSelectionFrame(ttk.Frame):
         
         # Create the label frame
         self.labelframe = ttk.LabelFrame(parent, text="Model Selection", padding=(10, 5))
-        self.labelframe.grid(row=0, column=0, sticky="ew", padx=8, pady=4)
+        self.labelframe.grid(row=0, column=0, sticky="nsew", padx=8, pady=4)
         self.labelframe.grid_columnconfigure(0, weight=1)
+        self.labelframe.grid_rowconfigure(0, weight=1)
         
-        # Create model matrix frame
-        self.model_matrix_frame = ttk.Frame(self.labelframe)
-        self.model_matrix_frame.grid(row=0, column=0, sticky="ew")
-        self.model_matrix_frame.grid_columnconfigure(0, weight=1)
+        # Create canvas and scrollbar for scrolling
+        self.canvas = tk.Canvas(self.labelframe, background=BACKGROUND_COLOR, highlightthickness=0)
+        self.scrollbar = ttk.Scrollbar(self.labelframe, orient="vertical", command=self.canvas.yview)
+        self.model_matrix_frame = ttk.Frame(self.canvas)
+        
+        # Configure canvas
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+        
+        # Grid layout for canvas and scrollbar
+        self.canvas.grid(row=0, column=0, sticky="nsew")
+        self.scrollbar.grid(row=0, column=1, sticky="ns")
+        
+        # Create window in canvas
+        self.canvas_window = self.canvas.create_window((0, 0), window=self.model_matrix_frame, anchor="nw")
+        
+        # Bind events for scrolling
+        self.model_matrix_frame.bind("<Configure>", self._on_frame_configure)
+        self.canvas.bind("<Configure>", self._on_canvas_configure)
+        self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)
         
         self.create_model_matrix()
         self.configure_styles()
+
+    def _on_frame_configure(self, event):
+        """Reset the scroll region to encompass the inner frame."""
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+
+    def _on_canvas_configure(self, event):
+        """Resize the inner frame to match the canvas width."""
+        self.canvas.itemconfig(self.canvas_window, width=event.width)
+
+    def _on_mousewheel(self, event):
+        """Handle mousewheel scrolling."""
+        # Only scroll if the mouse is over the model selection area
+        x, y = self.winfo_pointerxy()
+        widget_under_mouse = self.winfo_containing(x, y)
+        
+        # Check if the widget under mouse is part of the model selection frame
+        is_descendant = False
+        if widget_under_mouse:
+            parent = widget_under_mouse
+            while parent:
+                if parent == self.labelframe:
+                    is_descendant = True
+                    break
+                parent = parent.master
+        
+        if is_descendant:
+            self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
     
     def configure_styles(self):
         """Configure custom styles for model selection buttons."""
@@ -56,45 +100,55 @@ class ModelSelectionFrame(ttk.Frame):
         # Set base font for all ttk widgets
         style.configure('.', font=BASE_FONT)
         
-        # Set default background for frames and labels to a light neutral color
+        # Set default background for frames and labels
         style.configure('TFrame', background=BACKGROUND_COLOR)
         style.configure('TLabel', background=BACKGROUND_COLOR)
+        style.configure('TLabelframe', background=BACKGROUND_COLOR)
+        style.configure('TLabelframe.Label', background=BACKGROUND_COLOR, font=BUTTON_BOLD_FONT)
         
         # Configure selected button style
         style.configure('Model.Selected.TButton',
                        background=SELECTED_BUTTON_COLOR,
-                       foreground='black',
-                       relief='sunken',
-                       padding=(8, 4),
+                       foreground=ACCENT_COLOR,
+                       relief='flat',
+                       borderwidth=0,
+                       padding=(8, 6),
                        font=BUTTON_BOLD_FONT)
                        
         # Configure normal button style
         style.configure('Model.TButton',
-                       padding=(8, 4),
-                       relief='raised',
+                       background='white',
+                       foreground=TEXT_COLOR,
+                       relief='flat',
+                       borderwidth=1,
+                       padding=(8, 6),
                        font=BUTTON_FONT)
                        
         # Configure hover effects
         style.map('Model.TButton',
-                 background=[('active', HOVER_BUTTON_COLOR), ('!active', '#F0F0F0')])
+                 background=[('active', HOVER_BUTTON_COLOR), ('!active', 'white')],
+                 relief=[('active', 'flat')])
         style.map('Model.Selected.TButton',
-                 background=[('active', ACTIVE_BUTTON_COLOR), ('!active', SELECTED_BUTTON_COLOR)],
-                 foreground=[('!disabled', 'black')])
+                 background=[('active', ACTIVE_BUTTON_COLOR), ('!active', SELECTED_BUTTON_COLOR)])
 
         # Configure star toggle buttons
         style.configure('Star.TButton',
                 padding=(4, 2),
                 width=2,
+                background='white',
+                relief='flat',
                 font=BUTTON_FONT)
         style.configure('Star.Selected.TButton',
                 padding=(4, 2),
                 width=2,
+                background='white',
+                relief='flat',
                 font=BUTTON_BOLD_FONT,
-                foreground='#c58b00')
+                foreground='#f59e0b') # Amber color for star
         style.map('Star.TButton',
-              background=[('active', HOVER_BUTTON_COLOR), ('!active', '#F0F0F0')])
+              background=[('active', HOVER_BUTTON_COLOR), ('!active', 'white')])
         style.map('Star.Selected.TButton',
-              background=[('active', ACTIVE_BUTTON_COLOR), ('!active', '#FBE7B2')])
+              background=[('active', HOVER_BUTTON_COLOR), ('!active', 'white')])
     
     def create_model_matrix(self):
         """Create a vertical list of model selection buttons organized by category."""
@@ -104,10 +158,11 @@ class ModelSelectionFrame(ttk.Frame):
             category_label = ttk.Label(
                 self.model_matrix_frame,
                 text=category,
-                font=('Arial', 10, 'bold'),
-                background=BACKGROUND_COLOR
+                font=HEADER_FONT,
+                background=BACKGROUND_COLOR,
+                foreground=TEXT_COLOR
             )
-            category_label.grid(row=row, column=0, sticky="w", padx=2, pady=(10, 2))
+            category_label.grid(row=row, column=0, sticky="w", padx=2, pady=(12, 4))
             row += 1
             
             # Create buttons for each model in this category, stacked vertically
@@ -292,80 +347,14 @@ class ModelSelectionFrame(ttk.Frame):
             btn.configure(text="☆", style='Star.TButton')
 
 
-class ControlPanel(ttk.Frame):
-    """Control panel with generate button, auto-generate checkbox, and progress bar."""
-    
-    def __init__(self, parent, on_generate: Callable[[], None], on_auto_generate_change: Callable[[bool], None]):
-        """Initialize the control panel."""
-        super().__init__(parent)
-        self.on_generate = on_generate
-        self.on_auto_generate_change = on_auto_generate_change
-        self.auto_generate = tk.BooleanVar(value=True)
-        
-        # Create controls labelframe
-        self.labelframe = ttk.LabelFrame(parent, text="Controls", padding=(10, 5))
-        self.labelframe.grid(row=0, column=0, sticky="ew", padx=8, pady=4)
-        
-        # Create controls frame
-        self.controls_frame = ttk.Frame(self.labelframe)
-        self.controls_frame.grid(row=0, column=0, sticky="ew")
-        
-        # Create Generate button
-        self.generate_button = ttk.Button(
-            self.controls_frame, 
-            text="Generate", 
-            command=self.on_generate
-        )
-        self.generate_button.grid(row=0, column=0, padx=(0, 8))
-        
-        # Create auto-generate checkbox
-        self.auto_checkbox = ttk.Checkbutton(
-            self.controls_frame, 
-            text="Auto-generate", 
-            variable=self.auto_generate,
-            command=self._on_auto_generate_toggle
-        )
-        self.auto_checkbox.grid(row=0, column=1, padx=(0, 5))
-        
-        # Create progress bar for loading state
-        self.progress_bar = ttk.Progressbar(self.controls_frame, mode='indeterminate')
-        self.progress_bar.grid(row=0, column=2, padx=(8, 0), sticky="ew")
-        
-        # Configure grid weights
-        self.controls_frame.grid_columnconfigure(2, weight=1)
-    
-    def _on_auto_generate_toggle(self):
-        """Handle auto-generate checkbox toggle."""
-        self.on_auto_generate_change(self.auto_generate.get())
-    
-    def set_auto_generate_enabled(self, enabled: bool):
-        """Enable or disable auto-generate functionality."""
-        if enabled:
-            self.auto_checkbox.state(['!disabled'])
-        else:
-            self.auto_generate.set(False)
-            self.auto_checkbox.state(['disabled'])
-    
-    def is_auto_generate_enabled(self) -> bool:
-        """Check if auto-generate is enabled."""
-        return self.auto_generate.get()
-    
-    def start_progress(self):
-        """Start the progress bar animation."""
-        self.progress_bar.start(10)
-    
-    def stop_progress(self):
-        """Stop the progress bar animation."""
-        self.progress_bar.stop()
-
-
 class PromptInputFrame(ttk.Frame):
-    """Frame for prompt input with auto-resizing text widget."""
+    """Frame for prompt input with auto-resizing text widget and integrated controls."""
     
     def __init__(self, parent, on_text_change: Callable[[tk.Event], None], on_enter: Callable[[tk.Event], Any],
                  on_enhance: Callable[[], None], on_enhance_with_directions: Callable[[], None],
                  on_generate: Callable[[], None], on_parallel_generate: Callable[[], None],
-                 on_save: Callable[[], None], on_copy: Callable[[], None]):
+                 on_save: Callable[[], None], on_copy: Callable[[], None],
+                 on_auto_generate_change: Callable[[bool], None]):
         """Initialize the prompt input frame."""
         super().__init__(parent)
         self.on_text_change = on_text_change
@@ -376,123 +365,145 @@ class PromptInputFrame(ttk.Frame):
         self.on_parallel_generate = on_parallel_generate
         self.on_save = on_save
         self.on_copy = on_copy
+        self.on_auto_generate_change = on_auto_generate_change
         
-        # Create prompt labelframe
-        self.labelframe = ttk.LabelFrame(parent, text="Prompt", padding=(10, 5))
-        self.labelframe.grid(row=1, column=0, sticky="ew", padx=8, pady=4)
-        self.labelframe.grid_columnconfigure(0, weight=1)
+        self._configure_styles()
         
-        # Create input frame for textbox
-        self.input_frame = ttk.Frame(self.labelframe)
-        self.input_frame.grid(row=0, column=0, sticky="ew")
+        # Create prompt container
+        self.container = ttk.Frame(parent, padding=(10, 5))
+        self.container.grid(row=1, column=0, sticky="ew", padx=8, pady=4)
+        self.container.grid_columnconfigure(0, weight=1)
+        
+        # --- Header: Label + Auto-Generate + Enhance ---
+        self.header_frame = ttk.Frame(self.container)
+        self.header_frame.grid(row=0, column=0, sticky="ew", pady=(0, 4))
+        
+        ttk.Label(self.header_frame, text="Prompt", font=HEADER_FONT, foreground=TEXT_COLOR).pack(side="left")
+        
+        # Auto-generate checkbox
+        self.auto_generate = tk.BooleanVar(value=True)
+        self.auto_generate_checkbox = ttk.Checkbutton(
+            self.header_frame,
+            text="Auto-generate",
+            variable=self.auto_generate,
+            command=self._on_auto_generate_toggle
+        )
+        self.auto_generate_checkbox.pack(side="right", padx=(10, 0))
+
+        # Enhance buttons
+        self.enhance_btn = ttk.Button(
+            self.header_frame,
+            text="✨ Auto Enhance",
+            style='Action.TButton',
+            command=self.on_enhance
+        )
+        self.enhance_btn.pack(side="right", padx=2)
+        
+        self.enhance_dir_btn = ttk.Button(
+            self.header_frame,
+            text="✨ Enhance...",
+            style='Action.TButton',
+            command=self.on_enhance_with_directions
+        )
+        self.enhance_dir_btn.pack(side="right")
+        
+        # --- Input Area ---
+        self.input_frame = ttk.Frame(self.container)
+        self.input_frame.grid(row=1, column=0, sticky="ew")
         self.input_frame.grid_columnconfigure(0, weight=1)
         
-        # Create and place the text input using Text widget
         self.text_input = tk.Text(
             self.input_frame,
-            height=2,
-            font=('Arial', 12),
-            wrap='word'
+            height=3,
+            font=PROMPT_FONT,
+            wrap='word',
+            relief='flat',
+            padx=10,
+            pady=10,
+            background='white',
+            foreground=TEXT_COLOR
         )
-        self.text_input.grid(row=0, column=0, sticky="ew", pady=(3, 3))
+        self.text_input.grid(row=0, column=0, sticky="ew", pady=(0, 8))
         
-        # Create a frame for the buttons below the text area
-        self.button_frame = ttk.Frame(self.labelframe)
-        self.button_frame.grid(row=1, column=0, sticky="ew", pady=(0, 3))
+        # --- Primary Action: Generate ---
+        self.generate_btn = ttk.Button(
+            self.container,
+            text="GENERATE IMAGE",
+            style='Primary.TButton',
+            command=self.on_generate
+        )
+        self.generate_btn.grid(row=2, column=0, sticky="ew", pady=(0, 8))
         
-        # Create buttons
-        self._create_buttons()
+        # --- Footer: Secondary Actions (Parallel, Save, Copy) ---
+        self.footer_frame = ttk.Frame(self.container)
+        self.footer_frame.grid(row=3, column=0, sticky="ew")
+        self.footer_frame.grid_columnconfigure(1, weight=1) # Spacer
         
-        # Bind text changes and events
+        # Left side: Parallel
+        self.parallel_btn = ttk.Button(
+            self.footer_frame,
+            text="Generate ★ Starred",
+            style='Action.TButton',
+            command=self.on_parallel_generate
+        )
+        self.parallel_btn.pack(side="left")
+        
+        # Right side: Output actions
+        self.copy_btn = ttk.Button(
+            self.footer_frame,
+            text="📋 Copy",
+            style='Action.TButton',
+            command=self.on_copy
+        )
+        self.copy_btn.pack(side="right", padx=(4, 0))
+        
+        self.save_btn = ttk.Button(
+            self.footer_frame,
+            text="💾 Save",
+            style='Action.TButton',
+            command=self.on_save
+        )
+        self.save_btn.pack(side="right")
+        
+        # Bind events
         self.text_input.bind('<KeyRelease>', self.on_text_change)
         self.text_input.bind('<<Modified>>', self._on_text_modified)
         self.text_input.bind('<Return>', self.on_enter)
         self.text_input.bind('<Configure>', lambda e: self.after_idle(self.adjust_text_height))
         
-        # Initialize auto-expanding text widget
         self.adjust_text_height()
-    
-    def _create_buttons(self):
-        """Create all buttons in the button frame in a horizontal layout."""
-        # Configure columns to distribute buttons evenly
-        for i in range(7):
-            self.button_frame.grid_columnconfigure(i, weight=1)
-        
-        # --- Enhance Frame with button and checkbox ---
-        self.enhance_frame = ttk.Frame(self.button_frame)
-        self.enhance_frame.grid(row=0, column=0, sticky="ew", padx=(0, 3))
-        
-        self.enhance_button = ttk.Button(
-            self.enhance_frame,
-            text="Enhance",
-            command=self.on_enhance
-        )
-        self.enhance_button.pack(side="left", fill="x", expand=True)
-        
-        self.autogenerate_after_enhance = tk.BooleanVar(value=True)
-        self.autogenerate_checkbox = ttk.Checkbutton(
-            self.enhance_frame,
-            text="Auto",
-            variable=self.autogenerate_after_enhance
-        )
-        self.autogenerate_checkbox.pack(side="left", padx=(3, 0))
-        # --- End Enhance Frame ---
-        
-        # Create Enhance with directions button
-        self.enhance_with_directions_button = ttk.Button(
-            self.button_frame,
-            text="Enhance...",
-            command=self.on_enhance_with_directions
-        )
-        self.enhance_with_directions_button.grid(row=0, column=1, sticky="ew", padx=3)
-        
-        # Create Generate button
-        self.generate_button = ttk.Button(
-            self.button_frame,
-            text="Generate",
-            command=self.on_generate
-        )
-        self.generate_button.grid(row=0, column=2, sticky="ew", padx=3)
 
-        # Create Parallel Generate button
-        self.parallel_generate_button = ttk.Button(
-            self.button_frame,
-            text="Generate ★",
-            command=self.on_parallel_generate
-        )
-        self.parallel_generate_button.grid(row=0, column=3, sticky="ew", padx=3)
+    def _configure_styles(self):
+        style = ttk.Style()
         
-        # --- Auto-generate Frame with checkbox ---
-        self.auto_frame = ttk.Frame(self.button_frame)
-        self.auto_frame.grid(row=0, column=4, sticky="ew", padx=3)
-        
-        self.auto_generate = tk.BooleanVar(value=True)
-        self.auto_generate_checkbox = ttk.Checkbutton(
-            self.auto_frame,
-            text="Auto-generate",
-            variable=self.auto_generate
+        # Primary CTA Button (Generate)
+        style.configure('Primary.TButton',
+            font=('Segoe UI', 11, 'bold'),
+            background=ACCENT_COLOR,
+            foreground='white',
+            padding=(10, 12),
+            relief='flat'
         )
-        self.auto_generate_checkbox.pack(fill="x", expand=True)
-        # --- End Auto-generate Frame ---
-        
-        # Create Save button
-        self.save_button = ttk.Button(
-            self.button_frame,
-            text="Save",
-            command=self.on_save
+        style.map('Primary.TButton',
+            background=[('active', ACCENT_HOVER_COLOR), ('!active', ACCENT_COLOR)],
+            foreground=[('!disabled', 'white')]
         )
-        self.save_button.grid(row=0, column=5, sticky="ew", padx=3)
         
-        # Create Copy button
-        self.copy_button = ttk.Button(
-            self.button_frame,
-            text="Copy",
-            command=self.on_copy
+        # Secondary Action Buttons
+        style.configure('Action.TButton',
+            font=BUTTON_FONT,
+            padding=(8, 4),
+            relief='flat',
+            background='white'
         )
-        self.copy_button.grid(row=0, column=6, sticky="ew", padx=(3, 0))
-    
+        style.map('Action.TButton',
+            background=[('active', HOVER_BUTTON_COLOR), ('!active', 'white')]
+        )
+
+    def _on_auto_generate_toggle(self):
+        self.on_auto_generate_change(self.auto_generate.get())
+
     def set_auto_generate_enabled(self, enabled: bool):
-        """Enable or disable auto-generate functionality."""
         if enabled:
             self.auto_generate_checkbox.state(['!disabled'])
         else:
@@ -500,83 +511,49 @@ class PromptInputFrame(ttk.Frame):
             self.auto_generate_checkbox.state(['disabled'])
     
     def is_auto_generate_enabled(self) -> bool:
-        """Check if auto-generate is enabled."""
         return self.auto_generate.get()
     
     def should_autogenerate_after_enhance(self) -> bool:
-        """Check if auto-generate after enhance is enabled."""
-        return self.autogenerate_after_enhance.get()
+        # Simplified: always auto-generate if main auto-generate is on
+        return self.auto_generate.get()
     
     def _on_text_modified(self, event):
-        """Handle text modification events."""
-        # Reset the modified flag
         self.text_input.edit_modified(False)
-        # Adjust text height
         self.adjust_text_height()
     
     def adjust_text_height(self):
-        """Automatically adjust the height of the text widget based on content."""
         try:
-            # Get the text content
             text_content = self.text_input.get("1.0", tk.END)
-            
-            # Count actual newlines in the text
             actual_lines = text_content.count('\n') + 1
-            
-            # Get the current width of the text widget in pixels
             widget_width = self.text_input.winfo_width()
             
-            if widget_width > 1:  # Make sure widget is rendered
-                # Create a temporary text widget to measure line count with wrapping
-                temp_text = tk.Text(self.input_frame, font=('Arial', 12), wrap='word', width=self.text_input.cget('width'))
+            if widget_width > 1:
+                temp_text = tk.Text(self.input_frame, font=PROMPT_FONT, wrap='word', width=self.text_input.cget('width'))
                 temp_text.insert("1.0", text_content)
-                
-                # Get the number of display lines (accounting for word wrap)
                 display_lines = int(temp_text.index('end-1c').split('.')[0])
-                
-                # Clean up temp widget
                 temp_text.destroy()
-                
-                # Use the maximum of actual lines and display lines
                 num_lines = max(actual_lines, display_lines)
             else:
-                # Fallback to simple line counting if widget not yet rendered
                 num_lines = actual_lines
             
-            # Set minimum height (in lines)
-            min_height = 2
-            
-            # Calculate final height (without maximum limit)
+            min_height = 3
             new_height = max(min_height, num_lines)
             
-            # Only update if height has changed
             current_height = int(self.text_input.cget('height'))
             if new_height != current_height:
                 self.text_input.configure(height=new_height)
-                # Update the frame layout
                 self.input_frame.update_idletasks()
-                
-        except Exception as e:
-            # Fallback to simple line counting if measurement fails
-            actual_lines = self.text_input.get("1.0", tk.END).count('\n') + 1
-            min_height = 2
-            new_height = max(min_height, actual_lines)
-            
-            current_height = int(self.text_input.cget('height'))
-            if new_height != current_height:
-                self.text_input.configure(height=new_height)
+        except Exception:
+            pass
     
     def get_text(self) -> str:
-        """Get the current text content."""
         return self.text_input.get("1.0", tk.END).strip()
     
     def set_text(self, text: str):
-        """Set the text content."""
         self.text_input.delete("1.0", tk.END)
         self.text_input.insert("1.0", text)
     
     def clear_text(self):
-        """Clear all text."""
         self.text_input.delete("1.0", tk.END)
 
 

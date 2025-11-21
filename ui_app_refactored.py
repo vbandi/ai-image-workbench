@@ -13,14 +13,15 @@ import logging
 import os
 import sys
 
-from PIL import Image
+from PIL import Image, ImageTk
 from ai_api import enhance_prompt
 from image_gen_api import generate_image, MODELS
 from config import (
     DEFAULT_MODEL, AUTO_GENERATE_MODELS, MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT,
-    SPINNER_FRAMES, UPDATE_THREAD_INTERVAL, DISPLAY_QUEUE_CHECK_INTERVAL
+    SPINNER_FRAMES, UPDATE_THREAD_INTERVAL, DISPLAY_QUEUE_CHECK_INTERVAL,
+    ACCENT_COLOR, BACKGROUND_COLOR, TEXT_COLOR
 )
-from ui_components import ModelSelectionFrame, ControlPanel, PromptInputFrame
+from ui_components import ModelSelectionFrame, PromptInputFrame
 from image_handler import ImageDisplayManager, TooltipManager
 from clipboard_manager import ClipboardManager
 from threading_utils import GenerationQueueManager, UpdateThreadManager, SpinnerAnimator
@@ -87,10 +88,6 @@ class ImageGeneratorApp:
         self.debounce_timer: Optional[str] = None
         self.debounce_delay = 500  # milliseconds
         
-        # Debounce timer for auto-generate
-        self.debounce_timer: Optional[str] = None
-        self.debounce_delay = 500  # milliseconds
-        
         # Create UI components
         self._create_main_frame()
         self._create_model_selection()
@@ -123,8 +120,8 @@ class ImageGeneratorApp:
         # Left pane hosts controls, right pane hosts the image display
         self.sidebar_frame = ttk.Frame(self.main_splitter, padding=(0, 8, 8, 8))
         self.sidebar_frame.grid_columnconfigure(0, weight=1)
-        self.sidebar_frame.grid_rowconfigure(0, weight=1)
-        self.sidebar_frame.grid_rowconfigure(1, weight=1)
+        self.sidebar_frame.grid_rowconfigure(0, weight=1) # Model selection takes space
+        self.sidebar_frame.grid_rowconfigure(1, weight=0) # Prompt input at bottom
 
         self.content_frame = ttk.Frame(self.main_splitter, padding=(8, 8, 0, 8))
         self.content_frame.grid_columnconfigure(0, weight=1)
@@ -133,7 +130,7 @@ class ImageGeneratorApp:
         # Add panes with weights so the image area gets remaining space
         self.main_splitter.add(self.sidebar_frame, weight=0)
         self.main_splitter.add(self.content_frame, weight=1)
-        self.root.after(0, lambda: self.main_splitter.sashpos(0, 320))
+        self.root.after(0, lambda: self.main_splitter.sashpos(0, 350)) # Slightly wider sidebar
     
     def _create_model_selection(self):
         """Create the model selection component."""
@@ -154,7 +151,8 @@ class ImageGeneratorApp:
             self.manual_generate,
             self.parallel_generate,
             self.save_image,
-            self.copy_image_to_clipboard
+            self.copy_image_to_clipboard,
+            self._on_auto_generate_change
         )
         
     def _create_image_display(self):
@@ -183,12 +181,12 @@ class ImageGeneratorApp:
         """Create the status bar."""
         # Create footer frame
         self.footer_frame = ttk.Frame(self.main_frame, style='Footer.TFrame')
-        self.footer_frame.grid(row=1, column=0, sticky="ew", padx=8, pady=(0, 8))
+        self.footer_frame.grid(row=1, column=0, sticky="ew", padx=0, pady=0)
         self.footer_frame.grid_columnconfigure(0, weight=1)
         
         # Create status label
         self.status_label = ttk.Label(self.footer_frame, text="Ready", style='Footer.TLabel')
-        self.status_label.grid(row=0, column=0, padx=8, pady=3, sticky="w")
+        self.status_label.grid(row=0, column=0, padx=12, pady=6, sticky="w")
     
     def _configure_styles(self):
         """Configure application styles."""
@@ -201,15 +199,15 @@ class ImageGeneratorApp:
             pass
         
         # Set base font for all ttk widgets
-        style.configure('.', font=('Arial', 10))
+        style.configure('.', font=('Segoe UI', 10))
         
-        # Set default background for frames and labels to a light neutral color
-        style.configure('TFrame', background='#f5f5f5')
-        style.configure('TLabel', background='#f5f5f5')
+        # Set default background for frames and labels
+        style.configure('TFrame', background=BACKGROUND_COLOR)
+        style.configure('TLabel', background=BACKGROUND_COLOR, foreground=TEXT_COLOR)
         
         # Footer style
-        style.configure('Footer.TFrame', background='#e0e0e0')
-        style.configure('Footer.TLabel', background='#e0e0e0')
+        style.configure('Footer.TFrame', background='#e4e6eb')
+        style.configure('Footer.TLabel', background='#e4e6eb', foreground='#65676b')
     
     def _setup_callbacks(self):
         """Set up callbacks for threading managers."""
@@ -262,6 +260,11 @@ class ImageGeneratorApp:
             if current_prompt:
                 self._start_generation(current_prompt)
     
+    def _on_auto_generate_change(self, enabled: bool):
+        """Handle auto-generate toggle."""
+        # Logic for auto-generate toggle if needed
+        pass
+
     def _on_key_release(self, event):
         """Handle key release events for auto-generation."""
         if not self.prompt_input.is_auto_generate_enabled() or event.keysym == 'Return':
@@ -654,6 +657,23 @@ class ImageGeneratorApp:
             # Start next queued generation, if any
             self._check_for_next_generation()
 
+    def show_toast(self, message: str, duration: int = 2000):
+        """Show a temporary toast notification overlay."""
+        toast = tk.Label(
+            self.image_frame, 
+            text=message, 
+            background="#333333", 
+            foreground="white", 
+            padx=15, 
+            pady=8, 
+            font=('Segoe UI', 10)
+        )
+        # Place centered at the bottom of the image frame
+        toast.place(relx=0.5, rely=0.9, anchor="center")
+        
+        # Destroy after duration
+        self.root.after(duration, toast.destroy)
+
     def save_image(self):
         """Save the current image to file."""
         if not self.current_image:
@@ -672,6 +692,7 @@ class ImageGeneratorApp:
             # Save the image
             self.current_image.save(filepath, "jpeg")
             self.status_label.config(text=f"Image saved to {filepath}")
+            self.show_toast("Image Saved! 💾")
             
         except Exception as e:
             self.status_label.config(text=f"Error saving image: {e}")
@@ -684,6 +705,7 @@ class ImageGeneratorApp:
         
         if self.clipboard_manager.copy_image_to_clipboard(self.current_image):
             self.status_label.config(text="Image copied to clipboard.")
+            self.show_toast("Copied to Clipboard! 📋")
         else:
             self.status_label.config(text="Copy not supported on this OS.")
 

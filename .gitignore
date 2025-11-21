@@ -1,0 +1,8 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# .NET
+ImageGenDotNet/obj/
+ImageGenDotNet/bin/

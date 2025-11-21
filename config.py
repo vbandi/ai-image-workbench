@@ -86,30 +86,25 @@ AUTO_GENERATE_MODELS = ["fal-ai/flux/schnell", "fal-ai/flux-1/srpo"]
 MIN_WINDOW_WIDTH = 1000
 MIN_WINDOW_HEIGHT = 600
 
-# Image settings
-MIN_ZOOM_LEVEL = 0.1
-MAX_ZOOM_LEVEL = 10.0
-ZOOM_FACTOR = 1.1
-
-# UI Colors
-BACKGROUND_COLOR = '#f5f5f5'
-FOOTER_BACKGROUND_COLOR = '#e0e0e0'
-SELECTED_BUTTON_COLOR = '#C7E0F4'
-HOVER_BUTTON_COLOR = '#E6F3FF'
-ACTIVE_BUTTON_COLOR = '#A9D0F5'
-
-# Font settings
-BASE_FONT = ('Arial', 10)
-BUTTON_FONT = ('Arial', 9)
-BUTTON_BOLD_FONT = ('Arial', 9, 'bold')
-
-# Threading settings
-UPDATE_THREAD_INTERVAL = 30  # milliseconds
-DISPLAY_QUEUE_CHECK_INTERVAL = 30  # milliseconds
-CLIPBOARD_RETRY_ATTEMPTS = 5
-CLIPBOARD_RETRY_DELAY = 0.01  # seconds
-
 # File settings
 DEFAULT_SAVE_FORMAT = "JPEG"
 DEFAULT_SAVE_EXTENSION = ".jpg"
 SUPPORTED_SAVE_FORMATS = [("JPEG files", "*.jpg"), ("All files", "*.*")]
+
+# UI Styling Constants
+BACKGROUND_COLOR = '#f5f5f5'
+SELECTED_BUTTON_COLOR = '#e0e0e0'
+HOVER_BUTTON_COLOR = '#f0f0f0'
+ACTIVE_BUTTON_COLOR = '#d0d0d0'
+BASE_FONT = ('Segoe UI', 10)
+BUTTON_FONT = ('Segoe UI', 10)
+BUTTON_BOLD_FONT = ('Segoe UI', 10, 'bold')
+ACCENT_COLOR = '#007bff'
+ACCENT_HOVER_COLOR = '#0056b3'
+TEXT_COLOR = '#333333'
+PROMPT_FONT = ('Segoe UI', 11)
+HEADER_FONT = ('Segoe UI', 12, 'bold')
+
+# Threading Constants
+UPDATE_THREAD_INTERVAL = 50
+DISPLAY_QUEUE_CHECK_INTERVAL = 50
