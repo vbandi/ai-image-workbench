@@ -11,7 +11,8 @@ MODEL_CATEGORIES = {
         "fal-ai/flux/schnell",
         "fal-ai/flux-1/srpo",
         "fal-ai/flux-pro/v1.1",
-        "fal-ai/flux-pro/v1.1-ultra"
+        "fal-ai/flux-pro/v1.1-ultra",
+        "fal-ai/flux-2-flex"
     ],
     "HiDream": [
         "fal-ai/hidream-i1-fast",
@@ -48,6 +49,7 @@ MODEL_ABBREVIATIONS = {
     "Flux 1 Srpo": "Flux SRPO",
     "Flux Pro V1.1": "Flux Pro",
     "Flux Pro V1.1 Ultra": "Flux Pro Ultra",
+    "Flux 2 Flex": "Flux 2 Flex",
     # Imagen Models
     "Imagen4 Preview": "Imagen4",
     "Imagen4 Preview Fast": "Imagen4 Fast",

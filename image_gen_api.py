@@ -25,6 +25,7 @@ MODELS = [
     "fal-ai/flux-1/srpo",
     "fal-ai/flux-pro/v1.1",
     "fal-ai/flux-pro/v1.1-ultra",
+    "fal-ai/flux-2-flex",
     "fal-ai/imagen4/preview",
     "fal-ai/imagen4/preview/fast",
     "fal-ai/imagen4/preview/ultra",
@@ -246,6 +247,25 @@ def _parse_gemini_3_pro_response(result: Dict[str, Any]) -> bytes:
         raise ValueError(f"Could not extract image from Gemini 3 Pro Image response: {result}")
 
 
+def _parse_flux_2_flex_response(result: Dict[str, Any]) -> bytes:
+    """Parse Flux 2 Flex response format."""
+    if "images" in result and isinstance(result["images"], list) and len(result["images"]) > 0:
+        image_obj = result["images"][0]
+        if isinstance(image_obj, dict) and "url" in image_obj:
+            image_url = image_obj["url"]
+            if image_url.startswith("data:"):
+                # Handle data URI
+                return base64.b64decode(image_url.split(",")[1])
+            else:
+                # Handle regular URL
+                response = requests.get(image_url)
+                return response.content
+        else:
+            raise ValueError(f"Unexpected Flux 2 Flex image format: {image_obj}")
+    else:
+        raise ValueError(f"Could not extract image from Flux 2 Flex response: {result}")
+
+
 def _parse_standard_response(result: Dict[str, Any]) -> bytes:
     """Parse standard response format."""
     image_data = result["images"][0]
@@ -394,6 +414,20 @@ def submit_image_generation(model: str, prompt: str):
                 "sync_mode": True
             }
         )
+    elif model == "fal-ai/flux-2-flex":
+        return fal_client.submit(
+            model,
+            arguments={
+                "prompt": prompt,
+                "image_size": "landscape_4_3",
+                "enable_prompt_expansion": True,
+                "safety_tolerance": "5",
+                "enable_safety_checker": False,
+                "output_format": "jpeg",
+                "guidance_scale": 3.5,
+                "num_inference_steps": 28
+            }
+        )
     else:
         # Standard handling for other models
         return fal_client.submit(
@@ -503,6 +537,8 @@ def poll_generation_result(handle, model: str):
                 decoded_image = _parse_bria_fibo_response(result)
             elif model == "fal-ai/gemini-3-pro-image-preview":
                 decoded_image = _parse_gemini_3_pro_response(result)
+            elif model == "fal-ai/flux-2-flex":
+                decoded_image = _parse_flux_2_flex_response(result)
             else:
                 # Standard handling for other models
                 decoded_image = _parse_standard_response(result)

@@ -27,6 +27,7 @@ class ModelSelectionFrame(ttk.Frame):
         self.model_button_texts: Dict[str, str] = {}  # Store original button text
         self.models_with_ticks: set = set()  # Track which models have generated images
         self.models_generating: set = set()  # Track which models are currently generating (hourglass)
+        self.models_viewed: set = set()  # Track which models have been viewed
         self.starred_models: set = set()
         self.model_order = []  # Preserve insertion order for starred models retrieval
         self.tooltip_manager = TooltipManager()
@@ -259,17 +260,27 @@ class ModelSelectionFrame(ttk.Frame):
             self.models_with_ticks.add(model)
         self._update_button_text(model)
     
+    def set_model_viewed(self, model: str):
+        """Mark a model as viewed (change tick to eye)."""
+        if model not in self.models_viewed:
+            self.models_viewed.add(model)
+        self._update_button_text(model)
+
     def clear_all_ticks(self):
-        """Clear all tick marks from model buttons."""
+        """Clear all tick marks and viewed status from model buttons."""
         self.models_with_ticks.clear()
+        self.models_viewed.clear()
         for model in self.model_buttons:
             self._update_button_text(model)
     
     def set_model_generating(self, model: str):
-        """Mark a model as currently generating (show hourglass, remove tick)."""
-        # When generating, ensure no tick is shown for this model
+        """Mark a model as currently generating (show hourglass, remove tick/eye)."""
+        # When generating, ensure no tick or eye is shown for this model
         if model in self.models_with_ticks:
             self.models_with_ticks.discard(model)
+        if model in self.models_viewed:
+            self.models_viewed.discard(model)
+            
         self.models_generating.add(model)
         self._update_button_text(model)
     
@@ -287,13 +298,16 @@ class ModelSelectionFrame(ttk.Frame):
                 self._update_button_text(model)
     
     def _update_button_text(self, model: str):
-        """Update button text to show/hide tick mark."""
+        """Update button text to show/hide status indicators."""
         if model in self.model_buttons:
             base_text = self.model_button_texts.get(model, "")
-            # Priority: generating hourglass over tick
+            # Priority: generating hourglass > viewed eye > generated tick
             if model in self.models_generating:
                 # Hourglass to indicate in-progress
                 new_text = f"⏳ {base_text}"
+            elif model in self.models_viewed:
+                # Eye to indicate viewed
+                new_text = f"👁 {base_text}"
             elif model in self.models_with_ticks:
                 # Add checkmark/tick
                 new_text = f"✓ {base_text}"

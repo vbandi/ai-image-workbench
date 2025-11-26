@@ -253,6 +253,7 @@ class ImageGeneratorApp:
             self.image_display_manager.processor.reset_view()
             self.image_display_manager.set_image(self.current_image)
             self._update_image_display()
+            self.model_selection.set_model_viewed(model)
             self.status_label.config(text="Ready (Cached image)")
         else:
             # Generate with the new model immediately
@@ -608,6 +609,7 @@ class ImageGeneratorApp:
                 self.image_display_manager.processor.reset_view()
                 self.image_display_manager.set_image(self.current_image)
                 self._update_image_display()
+                self.model_selection.set_model_viewed(model)
                 self.root.after(0, lambda t=generation_time: self.status_label.config(
                     text=f"Ready (Generated in {t:.1f}s) - Switched to first completed model"
                 ))
@@ -639,6 +641,7 @@ class ImageGeneratorApp:
                 self.image_display_manager.processor.reset_view()
                 self.image_display_manager.set_image(image)
                 self._update_image_display()
+                self.model_selection.set_model_viewed(model)
                 self.status_label.config(text=f"Ready (Generated in {generation_time:.1f}s)")
             else:
                 # Update status to show completion without switching
