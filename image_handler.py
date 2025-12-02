@@ -3,8 +3,8 @@ Image handling module for processing, displaying, and manipulating images.
 Handles zoom, pan, resize operations and image display management.
 """
 
-import math
-from typing import Optional, Dict, Any, Tuple
+import tkinter as tk
+from typing import Optional, Tuple
 from PIL import Image, ImageTk
 
 

@@ -3,7 +3,8 @@
 import base64
 import io
 import logging
-from typing import Dict, Any
+import time
+from typing import Dict, Any, Callable, Optional, TypedDict
 
 import requests
 from PIL import Image
@@ -19,7 +20,253 @@ if not LOGGER.handlers:
     LOGGER.addHandler(handler)
 LOGGER.setLevel(logging.INFO)
 
-# Available models
+
+# =============================================================================
+# Response Parsers - Consolidated into 3 generic patterns
+# =============================================================================
+
+def _download_from_url(url: str) -> bytes:
+    """Download image content from a URL, handling data URIs."""
+    if url.startswith("data:"):
+        # Handle data URI (e.g., "data:image/jpeg;base64,...")
+        return base64.b64decode(url.split(",")[1])
+    response = requests.get(url)
+    response.raise_for_status()
+    return response.content
+
+
+def _parse_images_array_url(result: Dict[str, Any], model_name: str) -> bytes:
+    """
+    Parse response with format: {"images": [{"url": "..."}]}
+    Used by: Imagen4, Gemini Flash, SeeDream, Nano Banana, Qwen, Gemini 3 Pro, Flux 2 Flex, FLUX PRO
+    """
+    if "images" not in result or not isinstance(result["images"], list) or len(result["images"]) == 0:
+        raise ValueError(f"Could not extract image from {model_name} response: {result}")
+    
+    image_obj = result["images"][0]
+    if isinstance(image_obj, dict) and "url" in image_obj:
+        return _download_from_url(image_obj["url"])
+    raise ValueError(f"Unexpected {model_name} image format: {image_obj}")
+
+
+def _parse_single_image_url(result: Dict[str, Any], model_name: str) -> bytes:
+    """
+    Parse response with format: {"image": {"url": "..."}}
+    Used by: WAN, BRIA FIBO
+    """
+    if "image" not in result or not isinstance(result["image"], dict) or "url" not in result["image"]:
+        raise ValueError(f"Could not extract image from {model_name} response: {result}")
+    
+    return _download_from_url(result["image"]["url"])
+
+
+def _parse_ideogram_response(result: Dict[str, Any]) -> bytes:
+    """
+    Parse Ideogram v2 response - handles multiple formats.
+    Format 1: {"images": ["url_or_data_uri"]}
+    Format 2: {"image": "url_or_data_uri"}
+    Format 3: {"result": {"images": [...]}}
+    """
+    # Format 1: Direct array of image URLs or data URIs
+    if "images" in result and isinstance(result["images"], list) and len(result["images"]) > 0:
+        encoded_image = result["images"][0]
+        if isinstance(encoded_image, str):
+            return _download_from_url(encoded_image)
+    
+    # Format 2: Object with image property
+    if "image" in result and isinstance(result["image"], str):
+        return _download_from_url(result["image"])
+    
+    # Format 3: Nested structure
+    if "result" in result and "images" in result["result"]:
+        encoded_image = result["result"]["images"][0]
+        if isinstance(encoded_image, str):
+            return _download_from_url(encoded_image)
+    
+    raise ValueError(f"Could not extract image from Ideogram v2 response: {result}")
+
+
+def _parse_standard_response(result: Dict[str, Any], model_name: str) -> bytes:
+    """Parse standard response format with base64 data URI in images array."""
+    if "images" not in result or not result["images"]:
+        raise ValueError(f"Could not extract image from {model_name} response: {result}")
+    image_data = result["images"][0]
+    encoded_image = image_data["url"]
+    return base64.b64decode(encoded_image.split(",")[1])
+
+
+# =============================================================================
+# Model Configuration Registry
+# =============================================================================
+
+class ModelConfig(TypedDict, total=False):
+    """Configuration for a model's API arguments and response parser."""
+    arguments: Dict[str, Any]
+    parser: str  # Parser function name: "images_array", "single_image", "ideogram", "standard"
+
+
+# Default arguments applied to all models unless overridden
+_DEFAULT_ARGUMENTS: Dict[str, Any] = {
+    "prompt": "",  # Placeholder - always replaced
+    "num_images": 1,
+    "enable_safety_checker": False,
+    "image_size": "landscape_4_3",
+    "sync_mode": True,
+    "safety_tolerance": 5,
+}
+
+# Model-specific configurations
+MODEL_REGISTRY: Dict[str, ModelConfig] = {
+    # Ideogram - unique response format
+    "fal-ai/ideogram/v2": {
+        "arguments": {
+            "enable_safety_checker": False,
+            "safety_tolerance": 5,
+        },
+        "parser": "ideogram",
+    },
+    
+    # Imagen4 variants - images array with URL objects
+    "fal-ai/imagen4/preview": {
+        "arguments": {
+            "num_images": 1,
+            "aspect_ratio": "4:3",
+            "enable_safety_checker": False,
+            "safety_tolerance": 5,
+        },
+        "parser": "images_array",
+    },
+    "fal-ai/imagen4/preview/fast": {
+        "arguments": {
+            "num_images": 1,
+            "aspect_ratio": "4:3",
+            "enable_safety_checker": False,
+            "safety_tolerance": 5,
+        },
+        "parser": "images_array",
+    },
+    "fal-ai/imagen4/preview/ultra": {
+        "arguments": {
+            "num_images": 1,
+            "aspect_ratio": "4:3",
+            "enable_safety_checker": False,
+            "safety_tolerance": 5,
+        },
+        "parser": "images_array",
+    },
+    
+    # Gemini models
+    "fal-ai/gemini-25-flash-image": {
+        "arguments": {
+            "num_images": 1,
+        },
+        "parser": "images_array",
+    },
+    "fal-ai/gemini-3-pro-image-preview": {
+        "arguments": {
+            "num_images": 1,
+            "aspect_ratio": "4:3",
+            "sync_mode": True,
+        },
+        "parser": "images_array",
+    },
+    
+    # Flux models
+    "fal-ai/flux-1/srpo": {
+        "arguments": {
+            "num_images": 1,
+            "image_size": "landscape_4_3",
+            "enable_safety_checker": False,
+            "guidance_scale": 4.5,
+            "num_inference_steps": 28,
+            "sync_mode": True,
+        },
+        "parser": "images_array",
+    },
+    "fal-ai/flux-2-flex": {
+        "arguments": {
+            "image_size": "landscape_4_3",
+            "enable_prompt_expansion": True,
+            "safety_tolerance": "5",
+            "enable_safety_checker": False,
+            "output_format": "jpeg",
+            "guidance_scale": 3.5,
+            "num_inference_steps": 28,
+        },
+        "parser": "images_array",
+    },
+    
+    # SeeDream models
+    "fal-ai/bytedance/seedream/v3/text-to-image": {
+        "arguments": {
+            "num_images": 1,
+            "enable_safety_checker": False,
+            "safety_tolerance": 5,
+        },
+        "parser": "images_array",
+    },
+    "fal-ai/bytedance/seedream/v4/text-to-image": {
+        "arguments": {
+            "num_images": 1,
+            "enable_safety_checker": False,
+            "safety_tolerance": 5,
+        },
+        "parser": "images_array",
+    },
+    
+    # WAN - single image response format
+    "fal-ai/wan/v2.2-5b/text-to-image": {
+        "arguments": {
+            "num_inference_steps": 40,
+            "enable_safety_checker": False,
+            "enable_prompt_expansion": False,
+            "guidance_scale": 3.5,
+            "shift": 2,
+            "image_size": "landscape_4_3",
+        },
+        "parser": "single_image",
+    },
+    
+    # Other models with images array format
+    "fal-ai/nano-banana": {
+        "arguments": {
+            "num_images": 1,
+            "aspect_ratio": "4:3",
+            "enable_safety_checker": False,
+            "safety_tolerance": 5,
+        },
+        "parser": "images_array",
+    },
+    "fal-ai/qwen-image": {
+        "arguments": {
+            "num_images": 1,
+            "image_size": "landscape_4_3",
+            "enable_safety_checker": False,
+            "guidance_scale": 2.5,
+            "num_inference_steps": 30,
+        },
+        "parser": "images_array",
+    },
+    
+    # BRIA - single image response format
+    "bria/fibo/generate": {
+        "arguments": {
+            "aspect_ratio": "4:3",
+        },
+        "parser": "single_image",
+    },
+}
+
+# Parser function mapping
+_PARSERS: Dict[str, Callable[[Dict[str, Any], str], bytes]] = {
+    "images_array": _parse_images_array_url,
+    "single_image": _parse_single_image_url,
+    "ideogram": lambda result, _: _parse_ideogram_response(result),
+    "standard": _parse_standard_response,
+}
+
+
+# Available models - derived from registry + defaults
 MODELS = [
     "fal-ai/flux/schnell",
     "fal-ai/flux-1/srpo",
@@ -46,231 +293,31 @@ MODELS = [
     "fal-ai/nano-banana",
     "fal-ai/qwen-image",
     "bria/fibo/generate",
+    "fal-ai/z-image/turbo",
 ]
 
 
-def _parse_ideogram_response(result: Dict[str, Any]) -> bytes:
-    """Parse Ideogram v2 response format."""
-    decoded_image = None
-    # Format 1: Direct array of image URLs or data URIs
-    if "images" in result and isinstance(result["images"], list) and len(result["images"]) > 0:
-        encoded_image = result["images"][0]
-        if isinstance(encoded_image, str):
-            if encoded_image.startswith("data:"):
-                # Handle data URI
-                decoded_image = base64.b64decode(encoded_image.split(",")[1])
-            else:
-                # Handle URL
-                response = requests.get(encoded_image)
-                decoded_image = response.content
-    # Format 2: Object with image property
-    elif "image" in result:
-        encoded_image = result["image"]
-        if isinstance(encoded_image, str):
-            if encoded_image.startswith("data:"):
-                # Handle data URI
-                decoded_image = base64.b64decode(encoded_image.split(",")[1])
-            else:
-                # Handle URL
-                response = requests.get(encoded_image)
-                decoded_image = response.content
-    # Format 3: Nested structure
-    elif "result" in result and "images" in result["result"]:
-        encoded_image = result["result"]["images"][0]
-        if isinstance(encoded_image, str):
-            if encoded_image.startswith("data:"):
-                # Handle data URI
-                decoded_image = base64.b64decode(encoded_image.split(",")[1])
-            else:
-                # Handle URL
-                response = requests.get(encoded_image)
-                decoded_image = response.content
-    if decoded_image is None:
-        raise ValueError(f"Could not extract image from Ideogram v2 response: {result}")
-    return decoded_image
+# =============================================================================
+# API Functions
+# =============================================================================
+
+def _get_model_arguments(model: str, prompt: str) -> Dict[str, Any]:
+    """Build API arguments for a model using registry or defaults."""
+    config = MODEL_REGISTRY.get(model, {})
+    model_args = config.get("arguments", {})
+    
+    # Start with defaults, override with model-specific args
+    arguments = {**_DEFAULT_ARGUMENTS, **model_args}
+    arguments["prompt"] = prompt
+    
+    return arguments
 
 
-def _parse_imagen4_response(result: Dict[str, Any], model_name: str) -> bytes:
-    """Parse Imagen 4 response format (all variants)."""
-    if "images" in result and isinstance(result["images"], list) and len(result["images"]) > 0:
-        image_obj = result["images"][0]
-        # Extract URL from the File object
-        if isinstance(image_obj, dict) and "url" in image_obj:
-            image_url = image_obj["url"]
-            # Download the image from URL
-            response = requests.get(image_url)
-            return response.content
-        else:
-            raise ValueError(f"Unexpected {model_name} image format: {image_obj}")
-    else:
-        raise ValueError(f"Could not extract image from {model_name} response: {result}")
-
-
-def _parse_gemini_flash_image_response(result: Dict[str, Any]) -> bytes:
-    """Parse Gemini 2.5 Flash Image response format."""
-    if "images" in result and isinstance(result["images"], list) and len(result["images"]) > 0:
-        image_obj = result["images"][0]
-        if isinstance(image_obj, dict) and "url" in image_obj:
-            image_url = image_obj["url"]
-            response = requests.get(image_url)
-            return response.content
-        else:
-            raise ValueError(f"Unexpected Gemini 2.5 Flash Image format: {image_obj}")
-    else:
-        raise ValueError(f"Could not extract image from Gemini 2.5 Flash Image response: {result}")
-
-
-def _parse_flux_pro_response(result: Dict[str, Any]) -> bytes:
-    """Parse FLUX.1 PRO response format."""
-    if "images" in result and isinstance(result["images"], list) and len(result["images"]) > 0:
-        image_obj = result["images"][0]
-        if isinstance(image_obj, dict) and "url" in image_obj:
-            image_url = image_obj["url"]
-            # Handle data URI
-            if image_url.startswith("data:image/jpeg;base64,"):
-                return base64.b64decode(image_url.split(",")[1])
-            # Handle regular URL
-            response = requests.get(image_url)
-            return response.content
-        else:
-            raise ValueError(f"Unexpected FLUX.1 PRO image format: {image_obj}")
-    else:
-        raise ValueError(f"Could not extract image from FLUX.1 PRO response: {result}")
-
-
-def _parse_seedream_response(result: Dict[str, Any]) -> bytes:
-    """Parse SeeDream v3 response format."""
-    if "images" in result and isinstance(result["images"], list) and len(result["images"]) > 0:
-        image_obj = result["images"][0]
-        if isinstance(image_obj, dict) and "url" in image_obj:
-            image_url = image_obj["url"]
-            response = requests.get(image_url)
-            return response.content
-        else:
-            raise ValueError(f"Unexpected SeeDream v3 image format: {image_obj}")
-    else:
-        raise ValueError(f"Could not extract image from SeeDream v3 response: {result}")
-
-
-def _parse_seedream_v4_response(result: Dict[str, Any]) -> bytes:
-    """Parse SeeDream v4 response format."""
-    if "images" in result and isinstance(result["images"], list) and len(result["images"]) > 0:
-        image_obj = result["images"][0]
-        if isinstance(image_obj, dict) and "url" in image_obj:
-            image_url = image_obj["url"]
-            response = requests.get(image_url)
-            return response.content
-        else:
-            raise ValueError(f"Unexpected SeeDream v4 image format: {image_obj}")
-    else:
-        raise ValueError(f"Could not extract image from SeeDream v4 response: {result}")
-
-
-def _parse_wan_response(result: Dict[str, Any]) -> bytes:
-    """Parse WAN v2.2-5b response format."""
-    if "image" in result and isinstance(result["image"], dict) and "url" in result["image"]:
-        image_url = result["image"]["url"]
-        response = requests.get(image_url)
-        return response.content
-    else:
-        raise ValueError(f"Could not extract image from WAN v2.2-5b response: {result}")
-
-
-def _parse_nano_banana_response(result: Dict[str, Any]) -> bytes:
-    """Parse Nano Banana response format."""
-    if "images" in result and isinstance(result["images"], list) and len(result["images"]) > 0:
-        image_obj = result["images"][0]
-        if isinstance(image_obj, dict) and "url" in image_obj:
-            image_url = image_obj["url"]
-            # Handle data URI
-            if image_url.startswith("data:image/"):
-                return base64.b64decode(image_url.split(",")[1])
-            # Handle regular URL
-            else:
-                response = requests.get(image_url)
-                return response.content
-        else:
-            raise ValueError(f"Unexpected Nano Banana image format: {image_obj}")
-    else:
-        raise ValueError(f"Could not extract image from Nano Banana response: {result}")
-
-
-def _parse_qwen_image_response(result: Dict[str, Any]) -> bytes:
-    """Parse Qwen Image response format."""
-    if "images" in result and isinstance(result["images"], list) and len(result["images"]) > 0:
-        image_obj = result["images"][0]
-        if isinstance(image_obj, dict) and "url" in image_obj:
-            image_url = image_obj["url"]
-            # Handle data URI
-            if image_url.startswith("data:image/"):
-                return base64.b64decode(image_url.split(",")[1])
-            # Handle regular URL
-            else:
-                response = requests.get(image_url)
-                return response.content
-        else:
-            raise ValueError(f"Unexpected Qwen Image format: {image_obj}")
-    else:
-        raise ValueError(f"Could not extract image from Qwen Image response: {result}")
-
-
-def _parse_bria_fibo_response(result: Dict[str, Any]) -> bytes:
-    """Parse BRIA FIBO generate response format."""
-    # Expected: { "image": { "url": "...", ... } }
-    if "image" in result and isinstance(result["image"], dict):
-        image_obj = result["image"]
-        if "url" in image_obj and isinstance(image_obj["url"], str):
-            image_url = image_obj["url"]
-            # Download the image from the provided URL
-            response = requests.get(image_url)
-            response.raise_for_status()
-            return response.content
-    raise ValueError(f"Could not extract image from BRIA FIBO response: {result}")
-
-
-def _parse_gemini_3_pro_response(result: Dict[str, Any]) -> bytes:
-    """Parse Gemini 3 Pro Image Preview response format."""
-    if "images" in result and isinstance(result["images"], list) and len(result["images"]) > 0:
-        image_obj = result["images"][0]
-        if isinstance(image_obj, dict) and "url" in image_obj:
-            image_url = image_obj["url"]
-            if image_url.startswith("data:"):
-                # Handle data URI
-                return base64.b64decode(image_url.split(",")[1])
-            else:
-                # Handle regular URL
-                response = requests.get(image_url)
-                return response.content
-        else:
-            raise ValueError(f"Unexpected Gemini 3 Pro Image format: {image_obj}")
-    else:
-        raise ValueError(f"Could not extract image from Gemini 3 Pro Image response: {result}")
-
-
-def _parse_flux_2_flex_response(result: Dict[str, Any]) -> bytes:
-    """Parse Flux 2 Flex response format."""
-    if "images" in result and isinstance(result["images"], list) and len(result["images"]) > 0:
-        image_obj = result["images"][0]
-        if isinstance(image_obj, dict) and "url" in image_obj:
-            image_url = image_obj["url"]
-            if image_url.startswith("data:"):
-                # Handle data URI
-                return base64.b64decode(image_url.split(",")[1])
-            else:
-                # Handle regular URL
-                response = requests.get(image_url)
-                return response.content
-        else:
-            raise ValueError(f"Unexpected Flux 2 Flex image format: {image_obj}")
-    else:
-        raise ValueError(f"Could not extract image from Flux 2 Flex response: {result}")
-
-
-def _parse_standard_response(result: Dict[str, Any]) -> bytes:
-    """Parse standard response format."""
-    image_data = result["images"][0]
-    encoded_image = image_data["url"]
-    return base64.b64decode(encoded_image.split(",")[1])
+def _get_parser(model: str) -> Callable[[Dict[str, Any], str], bytes]:
+    """Get the response parser for a model."""
+    config = MODEL_REGISTRY.get(model, {})
+    parser_name = config.get("parser", "standard")
+    return _PARSERS.get(parser_name, _parse_standard_response)
 
 
 def submit_image_generation(model: str, prompt: str):
@@ -293,154 +340,9 @@ def submit_image_generation(model: str, prompt: str):
         raise ValueError("Prompt cannot be empty")
 
     LOGGER.debug("Submitting generation request model=%s prompt_len=%d", model, len(prompt))
-
-    # Model-specific submission logic
-    if model == "fal-ai/ideogram/v2":
-        return fal_client.submit(
-            model,
-            arguments={
-                "prompt": prompt,
-                "enable_safety_checker": "False",
-                "safety_tolerance": 5
-            }
-        )
-    elif model in ["fal-ai/imagen4/preview", "fal-ai/imagen4/preview/fast", "fal-ai/imagen4/preview/ultra"]:
-        return fal_client.submit(
-            model,
-            arguments={
-                "prompt": prompt,
-                "num_images": 1,
-                "aspect_ratio": "4:3",
-                "enable_safety_checker": "False",
-                "safety_tolerance": 5
-            }
-        )
-    elif model == "fal-ai/gemini-25-flash-image":
-        return fal_client.submit(
-            model,
-            arguments={
-                "prompt": prompt,
-                "num_images": 1
-            }
-        )
-    elif model == "fal-ai/flux-1/srpo":
-        return fal_client.submit(
-            model,
-            arguments={
-                "prompt": prompt,
-                "num_images": 1,
-                "image_size": "landscape_4_3",
-                "enable_safety_checker": "False",
-                "guidance_scale": 4.5,
-                "num_inference_steps": 28,
-                "sync_mode": "true",
-            }
-        )
-    elif model == "fal-ai/bytedance/seedream/v3/text-to-image":
-        return fal_client.submit(
-            model,
-            arguments={
-                "prompt": prompt,
-                "num_images": 1,
-                "enable_safety_checker": "False",
-                "safety_tolerance": 5
-            }
-        )
-    elif model == "fal-ai/bytedance/seedream/v4/text-to-image":
-        return fal_client.submit(
-            model,
-            arguments={
-                "prompt": prompt,
-                "num_images": 1,
-                "enable_safety_checker": "False",
-                "safety_tolerance": 5
-            }
-        )
-    elif model == "fal-ai/wan/v2.2-5b/text-to-image":
-        return fal_client.submit(
-            model,
-            arguments={
-                "prompt": prompt,
-                "num_inference_steps": 40,
-                "enable_safety_checker": False,
-                "enable_prompt_expansion": False,
-                "guidance_scale": 3.5,
-                "shift": 2,
-                "image_size": "landscape_4_3"
-            }
-        )
-    elif model == "fal-ai/nano-banana":
-        return fal_client.submit(
-            model,
-            arguments={
-                "prompt": prompt,
-                "num_images": 1,
-                "aspect_ratio": "4:3",
-                "enable_safety_checker": "False",
-                "safety_tolerance": 5
-            }
-        )
-    elif model == "fal-ai/qwen-image":
-        return fal_client.submit(
-            model,
-            arguments={
-                "prompt": prompt,
-                "num_images": 1,
-                "image_size": "landscape_4_3",
-                "enable_safety_checker": False,
-                "guidance_scale": 2.5,
-                "num_inference_steps": 30,
-            }
-        )
-    elif model == "bria/fibo/generate":
-        # BRIA FIBO accepts "prompt" and supports aspect ratios like "4:3"
-        return fal_client.submit(
-            model,
-            arguments={
-                "prompt": prompt,
-                "aspect_ratio": "4:3",
-                # Optional tuning parameters can be passed, using sensible defaults
-                # "guidance_scale": 5,
-                # "steps_num": 50,
-            }
-        )
-    elif model == "fal-ai/gemini-3-pro-image-preview":
-        return fal_client.submit(
-            model,
-            arguments={
-                "prompt": prompt,
-                "num_images": 1,
-                "aspect_ratio": "4:3",
-                "sync_mode": True
-            }
-        )
-    elif model == "fal-ai/flux-2-flex":
-        return fal_client.submit(
-            model,
-            arguments={
-                "prompt": prompt,
-                "image_size": "landscape_4_3",
-                "enable_prompt_expansion": True,
-                "safety_tolerance": "5",
-                "enable_safety_checker": False,
-                "output_format": "jpeg",
-                "guidance_scale": 3.5,
-                "num_inference_steps": 28
-            }
-        )
-    else:
-        # Standard handling for other models
-        return fal_client.submit(
-            model,
-            arguments={
-                "prompt": prompt,
-                "num_images": 1,
-                "enable_safety_checker": "False",
-                "image_size": "landscape_4_3",
-                "sync_mode": "true",
-                "safety_tolerance": 5,
-            }
-        )
+    
+    arguments = _get_model_arguments(model, prompt)
+    return fal_client.submit(model, arguments=arguments)
 
 
 def generate_image(model: str, prompt: str) -> Image.Image:
@@ -459,8 +361,6 @@ def generate_image(model: str, prompt: str) -> Image.Image:
         ValueError: If model is not supported or response parsing fails
         Exception: If API call fails
     """
-    import time
-
     start = time.time()
     handle = submit_image_generation(model, prompt)
     LOGGER.debug("Submitted request for model=%s handle=%s", model, type(handle).__name__)
@@ -499,13 +399,18 @@ def poll_generation_result(handle, model: str):
         status_str = str(status)
         status_upper = status_str.upper()
         status_name = getattr(status, 'name', None)
+        status_type_name = type(status).__name__
         LOGGER.debug(
-            "Polled status model=%s status=%s name=%s", model, status_str, status_name
+            "Polled status model=%s status=%s name=%s type=%s", model, status_str, status_name, status_type_name
         )
 
-        # Determine completion by checking status name or prefix
+        # Determine completion by checking:
+        # 1. Status class type name (newer fal_client versions use Completed/InProgress classes)
+        # 2. Status name attribute
+        # 3. String representation prefix
         completed = (
-            (status_name is not None and status_name.upper() == 'COMPLETED')
+            status_type_name == 'Completed'
+            or (status_name is not None and status_name.upper() == 'COMPLETED')
             or status_upper.startswith('COMPLETED')
             or status_upper.startswith('SUCCESS')
             or status_upper.startswith('DONE')
@@ -513,40 +418,13 @@ def poll_generation_result(handle, model: str):
 
         if completed:
             result = handle.get()
-            
-            # Parse based on model type
-            if model == "fal-ai/ideogram/v2":
-                decoded_image = _parse_ideogram_response(result)
-            elif model in ["fal-ai/imagen4/preview", "fal-ai/imagen4/preview/fast", "fal-ai/imagen4/preview/ultra"]:
-                decoded_image = _parse_imagen4_response(result, model)
-            elif model == "fal-ai/gemini-25-flash-image":
-                decoded_image = _parse_gemini_flash_image_response(result)
-            elif model == "fal-ai/flux-1/srpo":
-                decoded_image = _parse_flux_pro_response(result)
-            elif model == "fal-ai/bytedance/seedream/v3/text-to-image":
-                decoded_image = _parse_seedream_response(result)
-            elif model == "fal-ai/bytedance/seedream/v4/text-to-image":
-                decoded_image = _parse_seedream_v4_response(result)
-            elif model == "fal-ai/wan/v2.2-5b/text-to-image":
-                decoded_image = _parse_wan_response(result)
-            elif model == "fal-ai/nano-banana":
-                decoded_image = _parse_nano_banana_response(result)
-            elif model == "fal-ai/qwen-image":
-                decoded_image = _parse_qwen_image_response(result)
-            elif model == "bria/fibo/generate":
-                decoded_image = _parse_bria_fibo_response(result)
-            elif model == "fal-ai/gemini-3-pro-image-preview":
-                decoded_image = _parse_gemini_3_pro_response(result)
-            elif model == "fal-ai/flux-2-flex":
-                decoded_image = _parse_flux_2_flex_response(result)
-            else:
-                # Standard handling for other models
-                decoded_image = _parse_standard_response(result)
-            
+            parser = _get_parser(model)
+            decoded_image = parser(result, model)
             return True, Image.open(io.BytesIO(decoded_image))
 
         failed = (
-            (status_name is not None and status_name.upper() in {'FAILED', 'ERROR'})
+            status_type_name == 'Failed'
+            or (status_name is not None and status_name.upper() in {'FAILED', 'ERROR'})
             or status_upper.startswith('FAILED')
             or status_upper.startswith('ERROR')
         )
@@ -560,5 +438,3 @@ def poll_generation_result(handle, model: str):
     except Exception as e:
         LOGGER.exception("Exception polling generation result model=%s", model)
         return True, str(e)
-
-

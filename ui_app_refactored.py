@@ -19,7 +19,7 @@ from image_gen_api import generate_image, MODELS
 from config import (
     DEFAULT_MODEL, AUTO_GENERATE_MODELS, MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT,
     SPINNER_FRAMES, UPDATE_THREAD_INTERVAL, DISPLAY_QUEUE_CHECK_INTERVAL,
-    ACCENT_COLOR, BACKGROUND_COLOR, TEXT_COLOR
+    ACCENT_COLOR, BACKGROUND_COLOR, TEXT_COLOR, DEBOUNCE_DELAY_MS, StatusMessages
 )
 from ui_components import ModelSelectionFrame, PromptInputFrame
 from image_handler import ImageDisplayManager, TooltipManager
@@ -84,9 +84,13 @@ class ImageGeneratorApp:
         self.model_image_cache: Dict[str, Image.Image] = {}
         self.current_prompt: str = ""
         
+        # Track models in queue for overlay display
+        self.queued_models: list = []  # Models in generation queue (ordered)
+        self.models_with_errors: Dict[str, str] = {}  # model -> error message
+        
         # Debounce timer for auto-generation
         self.debounce_timer: Optional[str] = None
-        self.debounce_delay = 500  # milliseconds
+        self.debounce_delay = DEBOUNCE_DELAY_MS
         
         # Create UI components
         self._create_main_frame()
@@ -150,6 +154,7 @@ class ImageGeneratorApp:
             self.enhance_prompt_with_directions,
             self.manual_generate,
             self.parallel_generate,
+            self.parallel_generate_from_clipboard,
             self.save_image,
             self.copy_image_to_clipboard,
             self._on_auto_generate_change
@@ -167,6 +172,9 @@ class ImageGeneratorApp:
         self.image_label = ttk.Label(self.image_frame)
         self.image_label.grid(row=0, column=0, sticky="nsew")
         
+        # Create queue overlay frame (top-right corner)
+        self._create_queue_overlay()
+        
         # Initialize image display manager
         self.image_display_manager = ImageDisplayManager(self._schedule_image_update)
         
@@ -176,6 +184,112 @@ class ImageGeneratorApp:
         self.image_label.bind("<Button-5>", self._on_mouse_wheel)    # Linux scroll down
         self.image_label.bind("<ButtonPress-1>", self._on_pan_start)
         self.image_label.bind("<B1-Motion>", self._on_pan_motion)
+    
+    def _create_queue_overlay(self):
+        """Create the overlay frame for showing queued model generations."""
+        # Use a tk.Frame for the overlay to allow custom styling
+        self.queue_overlay_frame = tk.Frame(
+            self.image_frame,
+            background='#ffffff',
+            padx=8,
+            pady=6,
+            highlightbackground='#e0e0e0',
+            highlightthickness=1
+        )
+        # Initially hidden
+        self.queue_overlay_visible = False
+        self.queue_model_labels: Dict[str, tk.Label] = {}
+    
+    def _update_queue_overlay(self):
+        """Update the queue overlay with current model states."""
+        # Import here to avoid circular import issues
+        from config import MODEL_ABBREVIATIONS
+        
+        # Only show overlay if there are multiple models queued (parallel generation)
+        # For single model generation, the overlay is not needed
+        if len(self.queued_models) <= 1:
+            if self.queue_overlay_visible:
+                self.queue_overlay_frame.place_forget()
+                self.queue_overlay_visible = False
+            return
+        
+        # Clear existing labels
+        for widget in self.queue_overlay_frame.winfo_children():
+            widget.destroy()
+        self.queue_model_labels.clear()
+        
+        # Create title label
+        title_label = tk.Label(
+            self.queue_overlay_frame,
+            text="Generation Queue",
+            font=('Segoe UI', 9, 'bold'),
+            background='#ffffff',
+            foreground='#333333'
+        )
+        title_label.pack(anchor='w', pady=(0, 4))
+        
+        # Create label for each queued model
+        for model in self.queued_models:
+            # Get display name
+            display_name = model.replace("fal-ai/", "").replace("/", " ").title()
+            display_name = MODEL_ABBREVIATIONS.get(display_name, display_name)
+            
+            # Determine icon based on state
+            if model in self.models_with_errors:
+                icon = "❌"
+                fg_color = '#dc3545'  # Red for error
+            elif model in self.model_image_cache:
+                icon = "✓"
+                fg_color = '#28a745'  # Green for completed
+            else:
+                icon = "⏳"
+                fg_color = '#666666'  # Gray for pending
+            
+            label_text = f"{icon} {display_name}"
+            
+            # Create clickable label
+            model_label = tk.Label(
+                self.queue_overlay_frame,
+                text=label_text,
+                font=('Segoe UI', 9),
+                background='#ffffff',
+                foreground=fg_color,
+                cursor='hand2' if model in self.model_image_cache else 'arrow'
+            )
+            model_label.pack(anchor='w', pady=1)
+            
+            # Add tooltip for error messages
+            if model in self.models_with_errors:
+                self.tooltip_manager.add_tooltip(model_label, f"Error: {self.models_with_errors[model]}")
+            
+            # Bind click handler if image is available
+            if model in self.model_image_cache:
+                model_label.bind('<Button-1>', lambda e, m=model: self._on_queue_model_click(m))
+                # Add hover effect
+                model_label.bind('<Enter>', lambda e, lbl=model_label: lbl.configure(background='#f0f0f0'))
+                model_label.bind('<Leave>', lambda e, lbl=model_label: lbl.configure(background='#ffffff'))
+            
+            self.queue_model_labels[model] = model_label
+        
+        # Position the overlay in the top-right corner of the image frame
+        if not self.queue_overlay_visible:
+            self.queue_overlay_frame.place(relx=1.0, rely=0.0, anchor='ne', x=-10, y=10)
+            self.queue_overlay_visible = True
+        
+        # Raise overlay to ensure it's on top
+        self.queue_overlay_frame.lift()
+    
+    def _on_queue_model_click(self, model: str):
+        """Handle click on a model in the queue overlay."""
+        if model in self.model_image_cache:
+            # Switch to this model and display its cached image
+            self.model_selection.set_selected_model(model, notify=False)
+            self.current_image = self.model_image_cache[model]
+            self.image_display_manager.processor.reset_view()
+            self.image_display_manager.set_image(self.current_image)
+            self._update_image_display()
+            self.model_selection.set_model_viewed(model)
+            self.status_label.config(text=StatusMessages.READY_CACHED)
     
     def _create_status_bar(self):
         """Create the status bar."""
@@ -254,7 +368,7 @@ class ImageGeneratorApp:
             self.image_display_manager.set_image(self.current_image)
             self._update_image_display()
             self.model_selection.set_model_viewed(model)
-            self.status_label.config(text="Ready (Cached image)")
+            self.status_label.config(text=StatusMessages.READY_CACHED)
         else:
             # Generate with the new model immediately
             current_prompt = self.prompt_input.get_text()
@@ -372,11 +486,11 @@ class ImageGeneratorApp:
         """Enhance the prompt using AI API."""
         current_prompt = self.prompt_input.get_text()
         if not current_prompt:
-            self.status_label.config(text="Please enter a prompt to enhance.")
+            self.status_label.config(text=StatusMessages.ENTER_PROMPT_TO_ENHANCE)
             return
         
         try:
-            self.status_label.config(text="Enhancing prompt with AI...")
+            self.status_label.config(text=StatusMessages.ENHANCING)
             enhanced_prompt = enhance_prompt(current_prompt, directions=directions)
             
             # Clear cache since prompt is changing
@@ -384,7 +498,7 @@ class ImageGeneratorApp:
             
             self.prompt_input.set_text(enhanced_prompt)
             self.current_prompt = enhanced_prompt
-            self.status_label.config(text="Prompt enhanced successfully.")
+            self.status_label.config(text=StatusMessages.ENHANCED)
             
             # Auto-generate if enabled in prompt input
             if self.prompt_input.should_autogenerate_after_enhance():
@@ -421,20 +535,20 @@ class ImageGeneratorApp:
         """Generate images in parallel for all starred models."""
         current_prompt = self.prompt_input.get_text()
         if len(current_prompt) == 0:
-            self.status_label.config(text="Please enter a prompt to generate.")
+            self.status_label.config(text=StatusMessages.ENTER_PROMPT)
             return
         
         # Get starred models
         starred_models = self.model_selection.get_starred_models()
         if not starred_models:
-            self.status_label.config(text="Please star at least one model to use parallel generation.")
+            self.status_label.config(text=StatusMessages.STAR_MODEL_FIRST)
             return
 
         if self.generation_queue.is_currently_generating():
-            self.status_label.config(text="Please wait for the current generation to finish before starting parallel generation.")
+            self.status_label.config(text=StatusMessages.WAIT_FOR_GENERATION)
             return
         if self.generation_queue.is_parallel_active():
-            self.status_label.config(text="Parallel generation is already in progress.")
+            self.status_label.config(text=StatusMessages.PARALLEL_IN_PROGRESS)
             return
         
         # Check if prompt has changed - if so, clear cache
@@ -449,16 +563,78 @@ class ImageGeneratorApp:
             self._generate_image_for_model
         )
         if not started:
-            self.status_label.config(text="Unable to start parallel generation.")
+            self.status_label.config(text=StatusMessages.PARALLEL_UNABLE)
             return
         
         # Reset generating indicators then mark starred models as in-progress
         self.model_selection.clear_all_generating()
+        # Clear previous queue and track new queued models for overlay display
+        self.queued_models.clear()
+        self.models_with_errors.clear()
+        self.queued_models = starred_models.copy()
+        self._update_queue_overlay()
         # Set all starred models as generating
         for model in starred_models:
             self.model_selection.set_model_generating(model)
         
         self.status_label.config(text=f"Generating images for {len(starred_models)} models...")
+    
+    def parallel_generate_from_clipboard(self):
+        """Generate images in parallel for all starred models using prompt from clipboard."""
+        # Try to get text from clipboard
+        try:
+            clipboard_text = self.root.clipboard_get()
+        except tk.TclError:
+            self.status_label.config(text="No text in clipboard")
+            return
+        
+        if not clipboard_text or not clipboard_text.strip():
+            self.status_label.config(text="Clipboard is empty")
+            return
+        
+        # Set the prompt from clipboard
+        clipboard_prompt = clipboard_text.strip()
+        self.prompt_input.set_text(clipboard_prompt)
+        
+        # Get starred models
+        starred_models = self.model_selection.get_starred_models()
+        if not starred_models:
+            self.status_label.config(text=StatusMessages.STAR_MODEL_FIRST)
+            return
+
+        if self.generation_queue.is_currently_generating():
+            self.status_label.config(text=StatusMessages.WAIT_FOR_GENERATION)
+            return
+        if self.generation_queue.is_parallel_active():
+            self.status_label.config(text=StatusMessages.PARALLEL_IN_PROGRESS)
+            return
+        
+        # Clear cache since we have a new prompt
+        self._clear_model_cache()
+        self.current_prompt = clipboard_prompt
+        
+        # Start parallel generation
+        started = self.generation_queue.start_parallel_generation(
+            starred_models,
+            clipboard_prompt,
+            self._generate_image_for_model
+        )
+        if not started:
+            self.status_label.config(text=StatusMessages.PARALLEL_UNABLE)
+            return
+        
+        # Reset generating indicators then mark starred models as in-progress
+        self.model_selection.clear_all_generating()
+        # Clear previous queue and track new queued models for overlay display
+        self.queued_models.clear()
+        self.models_with_errors.clear()
+        self.queued_models = starred_models.copy()
+        self._update_queue_overlay()
+        # Set all starred models as generating
+        for model in starred_models:
+            self.model_selection.set_model_generating(model)
+        
+        self.status_label.config(text=f"Generating from clipboard for {len(starred_models)} models...")
     
     def _generate_image_for_model(self, model: str, prompt: str):
         """Generate an image for a specific model (used in parallel generation)."""
@@ -480,8 +656,14 @@ class ImageGeneratorApp:
         # Mark the selected model as generating (show hourglass)
         try:
             self.model_selection.set_model_generating(selected_model)
+            # Clear previous queue and start fresh for new generation
+            if not self.generation_queue.is_parallel_active():
+                self.queued_models.clear()
+                self.models_with_errors.clear()
+                self.queued_models.append(selected_model)
+                self._update_queue_overlay()
             # Update status from the main thread to avoid cross-thread UI calls
-            self.status_label.config(text="Generating image...")
+            self.status_label.config(text=StatusMessages.GENERATING)
             LOGGER.debug("Starting generation for model=%s prompt_len=%d", selected_model, len(prompt))
         except Exception:
             # Non-fatal: if UI update fails, continue generation
@@ -557,6 +739,10 @@ class ImageGeneratorApp:
         self.model_selection.clear_all_ticks()
         # Also clear any generating indicators
         self.model_selection.clear_all_generating()
+        # Clear queue overlay tracking
+        self.queued_models.clear()
+        self.models_with_errors.clear()
+        self._update_queue_overlay()
     
     def check_display_queue(self):
         """Check for pending display updates and parallel generation results."""
@@ -588,7 +774,9 @@ class ImageGeneratorApp:
         model = result["model"]
         
         if "error" in result:
-            # Handle error
+            # Handle error - track error for overlay
+            self.models_with_errors[model] = result['error']
+            self._update_queue_overlay()
             self.root.after(0, lambda: self.status_label.config(text=f"Error for {model}: {result['error']}"))
             self.root.after(0, lambda m=model: self.model_selection.clear_model_generating(m))
         else:
@@ -619,9 +807,12 @@ class ImageGeneratorApp:
                     text=f"Completed {m} in {t:.1f}s"
                 ))
         
+        # Update the queue overlay
+        self._update_queue_overlay()
+        
         # Check if all parallel generation is complete
         if not self.generation_queue.is_parallel_active():
-            self.root.after(0, lambda: self.status_label.config(text="All parallel generations completed"))
+            self.root.after(0, lambda: self.status_label.config(text=StatusMessages.ALL_PARALLEL_COMPLETE))
     
     def _handle_single_result(self, result: Dict[str, Any]):
         """Handle sequential generation results on the main thread."""
@@ -635,6 +826,8 @@ class ImageGeneratorApp:
             self.model_image_cache[model] = image
             # Update model button to show tick
             self.model_selection.set_model_generated(model)
+            # Update queue overlay to show completion
+            self._update_queue_overlay()
             # Only switch to display the image if this model is still selected
             if model == self.model_selection.get_selected_model():
                 self.current_image = image
@@ -649,13 +842,16 @@ class ImageGeneratorApp:
             LOGGER.debug("Single generation success handled for model=%s", model)
         elif result_type == "error" and model:
             error_msg = result.get("error", "Unknown error")
+            # Track error for overlay display
+            self.models_with_errors[model] = error_msg
+            self._update_queue_overlay()
             self.status_label.config(text=f"Error: {error_msg}")
             LOGGER.debug("Single generation error handled for model=%s message=%s", model, error_msg)
         elif result_type == "cleanup" and model:
             self.model_selection.clear_model_generating(model)
             current_status = self.status_label.cget("text")
             if current_status.lower().startswith("generating image"):
-                self.status_label.config(text="Ready")
+                self.status_label.config(text=StatusMessages.READY)
                 LOGGER.debug("Cleanup forced status reset to Ready for model=%s", model)
             # Start next queued generation, if any
             self._check_for_next_generation()
@@ -680,7 +876,7 @@ class ImageGeneratorApp:
     def save_image(self):
         """Save the current image to file."""
         if not self.current_image:
-            self.status_label.config(text="No image to save.")
+            self.status_label.config(text=StatusMessages.NO_IMAGE_TO_SAVE)
             return
         
         try:
@@ -703,14 +899,14 @@ class ImageGeneratorApp:
     def copy_image_to_clipboard(self):
         """Copy the current image to clipboard."""
         if not self.current_image:
-            self.status_label.config(text="No image to copy.")
+            self.status_label.config(text=StatusMessages.NO_IMAGE_TO_COPY)
             return
         
         if self.clipboard_manager.copy_image_to_clipboard(self.current_image):
-            self.status_label.config(text="Image copied to clipboard.")
+            self.status_label.config(text=StatusMessages.COPIED_TO_CLIPBOARD)
             self.show_toast("Copied to Clipboard! 📋")
         else:
-            self.status_label.config(text="Copy not supported on this OS.")
+            self.status_label.config(text=StatusMessages.COPY_NOT_SUPPORTED)
 
 
 def main(argv: Optional[list[str]] = None):

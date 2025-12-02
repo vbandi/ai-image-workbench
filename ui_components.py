@@ -367,6 +367,7 @@ class PromptInputFrame(ttk.Frame):
     def __init__(self, parent, on_text_change: Callable[[tk.Event], None], on_enter: Callable[[tk.Event], Any],
                  on_enhance: Callable[[], None], on_enhance_with_directions: Callable[[], None],
                  on_generate: Callable[[], None], on_parallel_generate: Callable[[], None],
+                 on_parallel_generate_clipboard: Callable[[], None],
                  on_save: Callable[[], None], on_copy: Callable[[], None],
                  on_auto_generate_change: Callable[[bool], None]):
         """Initialize the prompt input frame."""
@@ -377,6 +378,7 @@ class PromptInputFrame(ttk.Frame):
         self.on_enhance_with_directions = on_enhance_with_directions
         self.on_generate = on_generate
         self.on_parallel_generate = on_parallel_generate
+        self.on_parallel_generate_clipboard = on_parallel_generate_clipboard
         self.on_save = on_save
         self.on_copy = on_copy
         self.on_auto_generate_change = on_auto_generate_change
@@ -461,6 +463,14 @@ class PromptInputFrame(ttk.Frame):
             command=self.on_parallel_generate
         )
         self.parallel_btn.pack(side="left")
+        
+        self.parallel_clipboard_btn = ttk.Button(
+            self.footer_frame,
+            text="★ from 📋",
+            style='Action.TButton',
+            command=self.on_parallel_generate_clipboard
+        )
+        self.parallel_clipboard_btn.pack(side="left", padx=(4, 0))
         
         # Right side: Output actions
         self.copy_btn = ttk.Button(

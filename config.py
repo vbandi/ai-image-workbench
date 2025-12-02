@@ -38,7 +38,8 @@ MODEL_CATEGORIES = {
         "fal-ai/gemini-3-pro-image-preview",
         "fal-ai/nano-banana",
         "fal-ai/qwen-image",
-        "bria/fibo/generate"
+        "bria/fibo/generate",
+        "fal-ai/z-image/turbo"
     ]
 }
 
@@ -73,6 +74,7 @@ MODEL_ABBREVIATIONS = {
     "Gemini 3 Pro Image Preview": "Gemini 3 Pro",
     "Nano Banana": "Nano Banana",
     "Qwen Image": "Qwen Image",
+    "Z-Image Turbo": "Z-Image Turbo",
     # BRIA models
     "Bria Fibo Generate": "BRIA Fibo"
 }
@@ -110,3 +112,24 @@ HEADER_FONT = ('Segoe UI', 12, 'bold')
 # Threading Constants
 UPDATE_THREAD_INTERVAL = 50
 DISPLAY_QUEUE_CHECK_INTERVAL = 50
+DEBOUNCE_DELAY_MS = 500
+
+# Status Messages
+class StatusMessages:
+    """Centralized status messages for consistent UI text."""
+    READY = "Ready"
+    READY_CACHED = "Ready (Cached image)"
+    GENERATING = "Generating image..."
+    ENHANCING = "Enhancing prompt with AI..."
+    ENHANCED = "Prompt enhanced successfully."
+    NO_IMAGE_TO_SAVE = "No image to save."
+    NO_IMAGE_TO_COPY = "No image to copy."
+    COPIED_TO_CLIPBOARD = "Image copied to clipboard."
+    COPY_NOT_SUPPORTED = "Copy not supported on this OS."
+    ENTER_PROMPT = "Please enter a prompt to generate."
+    ENTER_PROMPT_TO_ENHANCE = "Please enter a prompt to enhance."
+    STAR_MODEL_FIRST = "Please star at least one model to use parallel generation."
+    WAIT_FOR_GENERATION = "Please wait for the current generation to finish before starting parallel generation."
+    PARALLEL_IN_PROGRESS = "Parallel generation is already in progress."
+    PARALLEL_UNABLE = "Unable to start parallel generation."
+    ALL_PARALLEL_COMPLETE = "All parallel generations completed"
