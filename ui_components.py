@@ -385,18 +385,22 @@ class PromptInputFrame(ttk.Frame):
         
         self._configure_styles()
         
-        # Create prompt container
-        self.container = ttk.Frame(parent, padding=(10, 5))
-        self.container.grid(row=1, column=0, sticky="ew", padx=8, pady=4)
+
+        # Create prompt container that fills available space
+        self.container = ttk.Frame(parent)
+        self.container.grid(row=0, column=0, sticky="nsew", padx=0, pady=0)
+        self.container.grid_rowconfigure(1, weight=1)  # Input area expands
         self.container.grid_columnconfigure(0, weight=1)
         
         # --- Header: Label + Auto-Generate + Enhance ---
+
         self.header_frame = ttk.Frame(self.container)
-        self.header_frame.grid(row=0, column=0, sticky="ew", pady=(0, 4))
-        
+        self.header_frame.grid(row=0, column=0, sticky="ew", pady=(5, 4))
+
         ttk.Label(self.header_frame, text="Prompt", font=HEADER_FONT, foreground=TEXT_COLOR).pack(side="left")
         
         # Auto-generate checkbox
+
         self.auto_generate = tk.BooleanVar(value=True)
         self.auto_generate_checkbox = ttk.Checkbutton(
             self.header_frame,
@@ -404,7 +408,7 @@ class PromptInputFrame(ttk.Frame):
             variable=self.auto_generate,
             command=self._on_auto_generate_toggle
         )
-        self.auto_generate_checkbox.pack(side="right", padx=(10, 0))
+        self.auto_generate_checkbox.pack(side="right", padx=(10, 10))
 
         # Enhance buttons
         self.enhance_btn = ttk.Button(
@@ -425,12 +429,13 @@ class PromptInputFrame(ttk.Frame):
         
         # --- Input Area ---
         self.input_frame = ttk.Frame(self.container)
-        self.input_frame.grid(row=1, column=0, sticky="ew")
+        self.input_frame.grid(row=1, column=0, sticky="nsew", pady=(0, 5))
+        self.input_frame.grid_rowconfigure(0, weight=1)  # Text expands to fill
         self.input_frame.grid_columnconfigure(0, weight=1)
         
         self.text_input = tk.Text(
             self.input_frame,
-            height=3,
+            height=1,  # Start with minimum height
             font=PROMPT_FONT,
             wrap='word',
             relief='flat',
@@ -439,7 +444,7 @@ class PromptInputFrame(ttk.Frame):
             background='white',
             foreground=TEXT_COLOR
         )
-        self.text_input.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        self.text_input.grid(row=0, column=0, sticky="nsew")
         
         # --- Primary Action: Generate ---
         self.generate_btn = ttk.Button(
@@ -489,13 +494,15 @@ class PromptInputFrame(ttk.Frame):
         )
         self.save_btn.pack(side="right")
         
+
         # Bind events
         self.text_input.bind('<KeyRelease>', self.on_text_change)
         self.text_input.bind('<<Modified>>', self._on_text_modified)
         self.text_input.bind('<Return>', self.on_enter)
-        self.text_input.bind('<Configure>', lambda e: self.after_idle(self.adjust_text_height))
+        # Remove the old configure binding that adjusts height
+        self.text_input.bind('<Configure>', lambda e: self._on_container_resize())
         
-        self.adjust_text_height()
+        self.adjust_text_height()  # Initial adjustment
 
     def _configure_styles(self):
         style = ttk.Style()
@@ -545,30 +552,50 @@ class PromptInputFrame(ttk.Frame):
         self.text_input.edit_modified(False)
         self.adjust_text_height()
     
+
     def adjust_text_height(self):
+        """Adjust text widget height based on content while respecting container constraints."""
         try:
-            text_content = self.text_input.get("1.0", tk.END)
-            actual_lines = text_content.count('\n') + 1
+            text_content = self.text_input.get("1.0", tk.END).strip()
+            if not text_content:
+                text_content = " "
+                
+            actual_lines = max(1, text_content.count('\n') + 1)
             widget_width = self.text_input.winfo_width()
             
             if widget_width > 1:
                 temp_text = tk.Text(self.input_frame, font=PROMPT_FONT, wrap='word', width=self.text_input.cget('width'))
                 temp_text.insert("1.0", text_content)
-                display_lines = int(temp_text.index('end-1c').split('.')[0])
+                display_lines = max(1, int(temp_text.index('end-1c').split('.')[0]))
                 temp_text.destroy()
                 num_lines = max(actual_lines, display_lines)
             else:
                 num_lines = actual_lines
             
-            min_height = 3
-            new_height = max(min_height, num_lines)
+            # Minimum height to ensure text is readable
+            min_height = max(3, num_lines)
+            
+            # Maximum height should not exceed container height
+            container_height = self.input_frame.winfo_height()
+            if container_height > 0:
+                # Reserve some space for padding
+                max_height = max(3, container_height // 20)  # Rough estimate based on font size
+            else:
+                max_height = 10  # Default reasonable maximum
+            
+            # Final height within bounds
+            new_height = max(min_height, min(num_lines, max_height))
             
             current_height = int(self.text_input.cget('height'))
-            if new_height != current_height:
+            if current_height != new_height:
                 self.text_input.configure(height=new_height)
-                self.input_frame.update_idletasks()
         except Exception:
             pass
+    
+    def _on_container_resize(self):
+        """Handle container resize events - called when splitter moves."""
+        # Recalculate text widget height based on new container size
+        self.after_idle(self.adjust_text_height)
     
     def get_text(self) -> str:
         return self.text_input.get("1.0", tk.END).strip()

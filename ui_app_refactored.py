@@ -99,6 +99,7 @@ class ImageGeneratorApp:
         self._create_image_display()
         self._create_status_bar()
         
+
         # Configure custom styles
         self._configure_styles()
         
@@ -108,6 +109,9 @@ class ImageGeneratorApp:
         
         # Bind keyboard shortcuts
         self._bind_shortcuts()
+        
+        # Configure inner splitter styling to make separator more visible
+        self._configure_inner_splitter_styling()
     
     def _create_main_frame(self):
         """Create the main application frame."""
@@ -117,37 +121,60 @@ class ImageGeneratorApp:
         self.main_frame.grid_rowconfigure(0, weight=1)
         self.main_frame.grid_rowconfigure(1, weight=0)
 
+
         # Splitter allows drag-to-resize between controls and image area
         self.main_splitter = ttk.PanedWindow(self.main_frame, orient=tk.HORIZONTAL)
         self.main_splitter.grid(row=0, column=0, sticky="nsew")
 
-        # Left pane hosts controls, right pane hosts the image display
-        self.sidebar_frame = ttk.Frame(self.main_splitter, padding=(0, 8, 8, 8))
-        self.sidebar_frame.grid_columnconfigure(0, weight=1)
-        self.sidebar_frame.grid_rowconfigure(0, weight=1) # Model selection takes space
-        self.sidebar_frame.grid_rowconfigure(1, weight=0) # Prompt input at bottom
+        # Left pane hosts controls with internal splitter for model/prompt separation
+        self.control_frame = ttk.Frame(self.main_splitter, padding=(0, 8, 8, 8))
+        self.control_frame.grid_columnconfigure(0, weight=1)
+        self.control_frame.grid_rowconfigure(0, weight=1)
 
+        # Internal splitter for model selection and prompt areas
+        self.sidebar_splitter = ttk.PanedWindow(self.control_frame, orient=tk.VERTICAL)
+        self.sidebar_splitter.grid(row=0, column=0, sticky="nsew")
+
+        # Model selection frame (top pane)
+        self.model_frame = ttk.Frame(self.sidebar_splitter, padding=(0, 0, 0, 0))
+        self.model_frame.grid_columnconfigure(0, weight=1)
+        self.model_frame.grid_rowconfigure(0, weight=1)
+
+
+        # Prompt frame (bottom pane)
+        self.prompt_frame = ttk.Frame(self.sidebar_splitter, padding=(0, 0, 0, 0))
+        self.prompt_frame.grid_columnconfigure(0, weight=1)
+        self.prompt_frame.grid_rowconfigure(0, weight=1)  # Allow prompt to expand
+
+        # Right pane hosts the image display
         self.content_frame = ttk.Frame(self.main_splitter, padding=(8, 8, 0, 8))
         self.content_frame.grid_columnconfigure(0, weight=1)
         self.content_frame.grid_rowconfigure(0, weight=1)
 
-        # Add panes with weights so the image area gets remaining space
-        self.main_splitter.add(self.sidebar_frame, weight=0)
+
+
+        # Add panes with weights so areas can be resized
+        self.sidebar_splitter.add(self.model_frame, weight=3)  # Model selection default priority
+        self.sidebar_splitter.add(self.prompt_frame, weight=2)  # Prompt area can expand/shrink
+        self.main_splitter.add(self.control_frame, weight=0)
         self.main_splitter.add(self.content_frame, weight=1)
         self.root.after(0, lambda: self.main_splitter.sashpos(0, 350)) # Slightly wider sidebar
+        self.root.after(0, lambda: self.sidebar_splitter.sashpos(0, 400)) # Default model area height
     
+
     def _create_model_selection(self):
         """Create the model selection component."""
         self.model_selection = ModelSelectionFrame(
-            self.sidebar_frame,
+            self.model_frame,
             self._on_model_select,
             DEFAULT_MODEL
         )
     
+
     def _create_prompt_input(self):
         """Create the prompt input component."""
         self.prompt_input = PromptInputFrame(
-            self.sidebar_frame,
+            self.prompt_frame,
             self._on_key_release,
             self._on_enter,
             self.enhance_prompt,
@@ -332,6 +359,7 @@ class ImageGeneratorApp:
         self.update_thread_manager.start_update_thread()
         self.check_display_queue()
     
+
     def _bind_shortcuts(self):
         """Bind keyboard shortcuts."""
         self.root.bind('<Configure>', self._on_window_resize)
@@ -344,6 +372,9 @@ class ImageGeneratorApp:
         self.main_splitter.bind('<<PanedWindowPaneSelected>>', self._on_splitter_move)
         # Bind to Configure events on the content frame to resize when splitter moves
         self.content_frame.bind('<Configure>', self._on_content_frame_resize)
+        # Bind inner splitter movement to handle prompt area resizing
+        self.sidebar_splitter.bind('<ButtonRelease-1>', self._on_inner_splitter_move)
+        self.sidebar_splitter.bind('<Configure>', self._on_inner_splitter_configure)
     
     def _on_model_select(self, model: str, is_reselection: bool = False):
         """Handle model selection change."""
@@ -448,10 +479,41 @@ class ImageGeneratorApp:
         if event.widget == self.root:
             self._schedule_image_update()
     
+
     def _on_content_frame_resize(self, event):
         """Handle content frame resize events (triggered by splitter movement)."""
         if event.widget == self.content_frame:
             self._schedule_image_update()
+
+    def _on_inner_splitter_move(self, event):
+        """Handle inner splitter movement to resize model/prompt areas."""
+        if event.widget == self.sidebar_splitter:
+            # Update the image display when the splitter moves
+            self._schedule_image_update()
+
+    def _on_inner_splitter_configure(self, event):
+        """Handle inner splitter configuration changes."""
+        if event.widget == self.sidebar_splitter:
+            # Schedule image update when splitter configuration changes
+            self._schedule_image_update()
+
+    def _configure_inner_splitter_styling(self):
+        """Configure styling for the inner splitter to make the separator more visible."""
+        # Configure the sash styling for better visibility
+        style = ttk.Style()
+        
+        # Create a more visible sash style
+        style.configure('Vertical.TPanedwindow.Sash',
+                       sashthickness=8,  # Thicker sash for better grip
+                       background='#cccccc',  # Light gray background
+                       sashrelief='raised')  # Raised relief to make it stand out
+        
+        # Apply the style to the inner splitter
+        try:
+            self.sidebar_splitter.configure(style='Vertical.TPanedwindow')
+        except Exception:
+            # Fallback if the style doesn't apply
+            pass
     
     def _on_splitter_move(self, event):
         """Handle splitter movement events."""

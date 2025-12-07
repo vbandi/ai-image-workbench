@@ -12,7 +12,8 @@ MODEL_CATEGORIES = {
         "fal-ai/flux-1/srpo",
         "fal-ai/flux-pro/v1.1",
         "fal-ai/flux-pro/v1.1-ultra",
-        "fal-ai/flux-2-flex"
+        "fal-ai/flux-2-flex",
+        "fal-ai/flux-2-pro"
     ],
     "HiDream": [
         "fal-ai/hidream-i1-fast",
@@ -33,6 +34,7 @@ MODEL_CATEGORIES = {
         "fal-ai/luma-photon",
         "fal-ai/bytedance/seedream/v3/text-to-image",
         "fal-ai/bytedance/seedream/v4/text-to-image",
+        "fal-ai/bytedance/seedream/v4.5/text-to-image",
         "fal-ai/wan/v2.2-5b/text-to-image",
         "fal-ai/gemini-25-flash-image",
         "fal-ai/gemini-3-pro-image-preview",
@@ -51,6 +53,7 @@ MODEL_ABBREVIATIONS = {
     "Flux Pro V1.1": "Flux Pro",
     "Flux Pro V1.1 Ultra": "Flux Pro Ultra",
     "Flux 2 Flex": "Flux 2 Flex",
+    "Flux 2 Pro": "Flux 2 Pro",
     # Imagen Models
     "Imagen4 Preview": "Imagen4",
     "Imagen4 Preview Fast": "Imagen4 Fast",
@@ -69,6 +72,7 @@ MODEL_ABBREVIATIONS = {
     "Sana": "Sana",
     "Bytedance Seedream V3 Text To Image": "Seedream v3",
     "Bytedance Seedream V4 Text To Image": "Seedream v4",
+    "Bytedance Seedream V4.5 Text To Image": "Seedream v4.5",
     "Wan V2.2-5B Text To Image": "WAN v2.2",
     "Gemini 25 Flash Image": "Gemini Flash",
     "Gemini 3 Pro Image Preview": "Gemini 3 Pro",

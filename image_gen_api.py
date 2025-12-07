@@ -195,6 +195,16 @@ MODEL_REGISTRY: Dict[str, ModelConfig] = {
         },
         "parser": "images_array",
     },
+    "fal-ai/flux-2-pro": {
+        "arguments": {
+            "image_size": "landscape_4_3",
+            "safety_tolerance": 5,
+            "enable_safety_checker": False,
+            "output_format": "jpeg",
+            "sync_mode": True,
+        },
+        "parser": "images_array",
+    },
     
     # SeeDream models
     "fal-ai/bytedance/seedream/v3/text-to-image": {
@@ -206,6 +216,14 @@ MODEL_REGISTRY: Dict[str, ModelConfig] = {
         "parser": "images_array",
     },
     "fal-ai/bytedance/seedream/v4/text-to-image": {
+        "arguments": {
+            "num_images": 1,
+            "enable_safety_checker": False,
+            "safety_tolerance": 5,
+        },
+        "parser": "images_array",
+    },
+    "fal-ai/bytedance/seedream/v4.5/text-to-image": {
         "arguments": {
             "num_images": 1,
             "enable_safety_checker": False,
@@ -273,6 +291,7 @@ MODELS = [
     "fal-ai/flux-pro/v1.1",
     "fal-ai/flux-pro/v1.1-ultra",
     "fal-ai/flux-2-flex",
+    "fal-ai/flux-2-pro",
     "fal-ai/imagen4/preview",
     "fal-ai/imagen4/preview/fast",
     "fal-ai/imagen4/preview/ultra",
@@ -287,6 +306,7 @@ MODELS = [
     "fal-ai/sana",
     "fal-ai/bytedance/seedream/v3/text-to-image",
     "fal-ai/bytedance/seedream/v4/text-to-image",
+    "fal-ai/bytedance/seedream/v4.5/text-to-image",
     "fal-ai/wan/v2.2-5b/text-to-image",
     "fal-ai/gemini-25-flash-image",
     "fal-ai/gemini-3-pro-image-preview",
