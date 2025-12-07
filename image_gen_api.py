@@ -273,6 +273,15 @@ MODEL_REGISTRY: Dict[str, ModelConfig] = {
         },
         "parser": "single_image",
     },
+    "fal-ai/longcat-image": {
+        "arguments": {
+            "image_size": None,
+            "num_images": None,
+            "enable_safety_checker": None,
+            "safety_tolerance": None,
+        },
+        "parser": "images_array",
+    },
 }
 
 # Parser function mapping
@@ -314,6 +323,7 @@ MODELS = [
     "fal-ai/qwen-image",
     "bria/fibo/generate",
     "fal-ai/z-image/turbo",
+    "fal-ai/longcat-image",
 ]
 
 
@@ -330,7 +340,8 @@ def _get_model_arguments(model: str, prompt: str) -> Dict[str, Any]:
     arguments = {**_DEFAULT_ARGUMENTS, **model_args}
     arguments["prompt"] = prompt
     
-    return arguments
+    # Filter out None values to allow unsetting defaults
+    return {k: v for k, v in arguments.items() if v is not None}
 
 
 def _get_parser(model: str) -> Callable[[Dict[str, Any], str], bytes]:

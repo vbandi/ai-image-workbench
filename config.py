@@ -41,7 +41,8 @@ MODEL_CATEGORIES = {
         "fal-ai/nano-banana",
         "fal-ai/qwen-image",
         "bria/fibo/generate",
-        "fal-ai/z-image/turbo"
+        "fal-ai/z-image/turbo",
+        "fal-ai/longcat-image"
     ]
 }
 
@@ -80,7 +81,8 @@ MODEL_ABBREVIATIONS = {
     "Qwen Image": "Qwen Image",
     "Z-Image Turbo": "Z-Image Turbo",
     # BRIA models
-    "Bria Fibo Generate": "BRIA Fibo"
+    "Bria Fibo Generate": "BRIA Fibo",
+    "Longcat-Image": "Longcat"
 }
 
 # UI Constants

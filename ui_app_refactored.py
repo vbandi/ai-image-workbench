@@ -24,7 +24,8 @@ from config import (
 from ui_components import ModelSelectionFrame, PromptInputFrame
 from image_handler import ImageDisplayManager, TooltipManager
 from clipboard_manager import ClipboardManager
-from threading_utils import GenerationQueueManager, UpdateThreadManager, SpinnerAnimator
+from threading_utils import UpdateThreadManager, SpinnerAnimator
+from generation_manager import GenerationManager, RequestStatus
 
 
 def _configure_logger() -> logging.Logger:
@@ -68,12 +69,11 @@ class ImageGeneratorApp:
         self.root.grid_columnconfigure(0, weight=1)
         
         # Initialize managers and components
-        self.generation_queue = GenerationQueueManager()
+        self.generation_manager = GenerationManager()
         self.update_thread_manager = UpdateThreadManager()
         self.clipboard_manager = ClipboardManager()
         self.tooltip_manager = TooltipManager()
         self.spinner_animator = SpinnerAnimator(SPINNER_FRAMES)
-        self._single_generation_queue: "queue.Queue[Dict[str, Any]]" = queue.Queue()
         
         # Current image and state
         self.current_image: Optional[Image.Image] = None
@@ -85,8 +85,11 @@ class ImageGeneratorApp:
         self.current_prompt: str = ""
         
         # Track models in queue for overlay display
-        self.queued_models: list = []  # Models in generation queue (ordered)
         self.models_with_errors: Dict[str, str] = {}  # model -> error message
+        # Track models in queue for overlay display
+        self.models_with_errors: Dict[str, str] = {}  # model -> error message
+        self.handled_request_ids: set = set() # Track processed requests
+        self.last_overlay_hash: str = "" # To prevent UI flickering
         
         # Debounce timer for auto-generation
         self.debounce_timer: Optional[str] = None
@@ -225,78 +228,216 @@ class ImageGeneratorApp:
         )
         # Initially hidden
         self.queue_overlay_visible = False
+        self.queue_overlay_expanded = False # Track expanded state
         self.queue_model_labels: Dict[str, tk.Label] = {}
+        
+        # Bind hover events for auto-expand
+        self.queue_overlay_frame.bind('<Enter>', self._on_overlay_hover_enter)
+        self.queue_overlay_frame.bind('<Leave>', self._on_overlay_hover_leave)
     
-    def _update_queue_overlay(self):
+    def _update_queue_overlay(self, active_requests=None):
         """Update the queue overlay with current model states."""
         # Import here to avoid circular import issues
         from config import MODEL_ABBREVIATIONS
         
-        # Only show overlay if there are multiple models queued (parallel generation)
-        # For single model generation, the overlay is not needed
-        if len(self.queued_models) <= 1:
-            if self.queue_overlay_visible:
-                self.queue_overlay_frame.place_forget()
-                self.queue_overlay_visible = False
-            return
+        # Get requests if not provided
+        if active_requests is None:
+            active_requests = self.generation_manager.get_all_requests()
+            
+        # We now want to show ALL requests in the "History" / "Generations" view
+        # so we don't filter out finished ones.
+        # so we don't filter out finished ones.
+        relevant_items = active_requests # All tracked requests
         
+        # Calculate state hash to prevent flashing (only redraw if changed)
+        # Hash comprises: count + expanded_state + for each item: id, status
+        current_hash_parts = [str(len(relevant_items)), str(self.queue_overlay_expanded)]
+        # Sort for stable hash
+        sorted_for_hash = sorted(relevant_items, key=lambda r: r.request_id)
+        for r in sorted_for_hash:
+            current_hash_parts.append(f"{r.request_id}:{r.status.name}:{r.seen}")
+        
+        current_hash = "|".join(current_hash_parts)
+        
+        # If hash matches, nothing changed fundamentally in the list structure/status
+        # (Assuming we don't need to animate progress bars here, just status icons)
+        if current_hash == self.last_overlay_hash and self.queue_overlay_visible:
+            return
+            
+        self.last_overlay_hash = current_hash
+        
+        # Always show the overlay
+        if not self.queue_overlay_visible:
+            self.queue_overlay_frame.place(relx=1.0, rely=0.0, anchor='ne', x=-10, y=10)
+            self.queue_overlay_visible = True
+            
         # Clear existing labels
         for widget in self.queue_overlay_frame.winfo_children():
             widget.destroy()
         self.queue_model_labels.clear()
         
-        # Create title label
+        # --- Header Section ---
+        header_frame = tk.Frame(self.queue_overlay_frame, bg='#ffffff')
+        header_frame.pack(fill='x', pady=(0, 4))
+        
+        # Title
+        # Count pending items (QUEUED or PROCESSING)
+        pending_count = sum(1 for r in relevant_items if r.status in (RequestStatus.QUEUED, RequestStatus.PROCESSING))
+        title_text = f"Generations ({pending_count})" if pending_count > 0 else "Generations"
         title_label = tk.Label(
-            self.queue_overlay_frame,
-            text="Generation Queue",
+            header_frame,
+            text=title_text,
             font=('Segoe UI', 9, 'bold'),
             background='#ffffff',
             foreground='#333333'
         )
-        title_label.pack(anchor='w', pady=(0, 4))
+        title_label.pack(side='left')
         
-        # Create label for each queued model
-        for model in self.queued_models:
-            # Get display name
-            display_name = model.replace("fal-ai/", "").replace("/", " ").title()
-            display_name = MODEL_ABBREVIATIONS.get(display_name, display_name)
+        # Clear Button (only if there are items to clear)
+        # Clear Buttons
+        btn_frame = tk.Frame(header_frame, bg='#ffffff')
+        btn_frame.pack(side='right')
+
+        if self.queue_overlay_expanded:
+            if any(r.status in (RequestStatus.COMPLETED, RequestStatus.FAILED, RequestStatus.CANCELLED) for r in relevant_items):
+                # Clear All
+                clear_all_btn = tk.Label(
+                    btn_frame,
+                    text="Clear All",
+                    font=('Segoe UI', 8),
+                    background='#ffffff',
+                    foreground='#007bff',
+                    cursor='hand2'
+                )
+                clear_all_btn.pack(side='right', padx=(5, 0))
+                clear_all_btn.bind('<Button-1>', lambda e: self._clear_generations_history(all=True))
+                self._add_hover_effect(clear_all_btn, '#007bff', '#0056b3', underline=True)
+
+                # Clear Seen (only if there are seen items)
+                if any(r.seen for r in relevant_items):
+                    clear_seen_btn = tk.Label(
+                        btn_frame,
+                        text="Clear Seen",
+                        font=('Segoe UI', 8),
+                        background='#ffffff',
+                        foreground='#007bff',
+                        cursor='hand2'
+                    )
+                    clear_seen_btn.pack(side='right', padx=(5, 0))
+                    clear_seen_btn.bind('<Button-1>', lambda e: self._clear_generations_history(all=False))
+                    self._add_hover_effect(clear_seen_btn, '#007bff', '#0056b3', underline=True)
+
+        # --- List Section (Only if Expanded) ---
+        if self.queue_overlay_expanded:
+            # Sort items: Newest first (by created_at)
+            sorted_items = sorted(relevant_items, key=lambda r: r.created_at, reverse=True)
             
-            # Determine icon based on state
-            if model in self.models_with_errors:
-                icon = "❌"
-                fg_color = '#dc3545'  # Red for error
-            elif model in self.model_image_cache:
-                icon = "✓"
-                fg_color = '#28a745'  # Green for completed
-            else:
-                icon = "⏳"
-                fg_color = '#666666'  # Gray for pending
+            # Limit the display if too many items (scrolling would be better, but for now cap it)
+            display_items = sorted_items[:15] # Show latest 15
             
-            label_text = f"{icon} {display_name}"
-            
-            # Create clickable label
-            model_label = tk.Label(
-                self.queue_overlay_frame,
-                text=label_text,
-                font=('Segoe UI', 9),
-                background='#ffffff',
-                foreground=fg_color,
-                cursor='hand2' if model in self.model_image_cache else 'arrow'
-            )
-            model_label.pack(anchor='w', pady=1)
-            
-            # Add tooltip for error messages
-            if model in self.models_with_errors:
-                self.tooltip_manager.add_tooltip(model_label, f"Error: {self.models_with_errors[model]}")
-            
-            # Bind click handler if image is available
-            if model in self.model_image_cache:
-                model_label.bind('<Button-1>', lambda e, m=model: self._on_queue_model_click(m))
-                # Add hover effect
-                model_label.bind('<Enter>', lambda e, lbl=model_label: lbl.configure(background='#f0f0f0'))
-                model_label.bind('<Leave>', lambda e, lbl=model_label: lbl.configure(background='#ffffff'))
-            
-            self.queue_model_labels[model] = model_label
+            # Create label for each request
+            for req in display_items:
+                model = req.model
+                # Get display name
+                display_name = model.replace("fal-ai/", "").replace("/", " ").title()
+                display_name = MODEL_ABBREVIATIONS.get(display_name, display_name)
+                
+                # Determine icon and color based on state
+                if req.status == RequestStatus.FAILED:
+                    icon = "❌"
+                    fg_color = '#dc3545'  # Red
+                    state_text = "Failed"
+                elif req.status == RequestStatus.COMPLETED:
+                    if req.seen:
+                        icon = "👁" # Eye for seen
+                        fg_color = '#28a745'  # Still green-ish but maybe darker?
+                        state_text = "Done (Viewed)"
+                    else:
+                        icon = "✓"
+                        fg_color = '#28a745'  # Green
+                        state_text = "Done (New)"
+                elif req.status == RequestStatus.PROCESSING:
+                    icon = "⏳"
+                    fg_color = '#007bff'  # Blue
+                    state_text = "Generating..."
+                elif req.status == RequestStatus.QUEUED:
+                    icon = "🕒"
+                    fg_color = '#666666'  # Gray
+                    state_text = "Queued"
+                elif req.status == RequestStatus.CANCELLED:
+                    icon = "🚫"
+                    fg_color = '#999999'
+                    state_text = "Cancelled"
+                else:
+                    icon = "?"
+                    fg_color = 'black'
+                    state_text = "?"
+                
+                # Label text
+                label_text = f"{icon} {display_name}"
+                
+                # Create container frame for the row (to handle tooltip/clicks better)
+                row_frame = tk.Frame(self.queue_overlay_frame, bg='white')
+                row_frame.pack(anchor='w', fill='x', pady=1)
+                
+                # Create clickable label
+                model_label = tk.Label(
+                    row_frame,
+                    text=label_text,
+                    font=('Segoe UI', 9),
+                    background='#ffffff',
+                    foreground=fg_color,
+                    cursor='hand2' if req.status == RequestStatus.COMPLETED else 'arrow'
+                )
+                model_label.pack(side='left')
+                
+                # Add tooltip for error messages or status
+                if req.status == RequestStatus.FAILED:
+                    self.tooltip_manager.add_tooltip(model_label, f"Error: {req.error_message}")
+                else:
+                    self.tooltip_manager.add_tooltip(model_label, f"Status: {state_text}")
+                
+                # Bind click handler if image is available
+                if req.status == RequestStatus.COMPLETED and req.result_image:
+                    # Use request_id to robustly retrieve image even if cache is cleared
+                    model_label.bind('<Button-1>', lambda e, rid=req.request_id: self._on_queue_model_click(rid))
+                    # Add hover effect
+                    model_label.bind('<Enter>', lambda e, lbl=model_label: lbl.configure(background='#f0f0f0'))
+                    model_label.bind('<Leave>', lambda e, lbl=model_label: lbl.configure(background='#ffffff'))
+                
+                self.queue_model_labels[model] = model_label
+        else:
+            # Collapsed view - show nothing below header
+            pass
+
+    def _on_overlay_hover_enter(self, event):
+        """Handle mouse enter on overlay."""
+        self.queue_overlay_expanded = True
+        self._update_queue_overlay()
+
+    def _on_overlay_hover_leave(self, event):
+        """Handle mouse leave on overlay."""
+        # Add a small check or delay if needed, but for frame binding simple leave might work
+        # if we consider children.
+        # Actually, standard Tkinter <Leave> fires when entering a child.
+        # However, entering a child also keeps us 'in' the widget effectively for our logic.
+        # But Tkinter implementation is tricky.
+        # A clearer way: check pointer coordinates?
+        # Or rely on the fact that we pack children INTO this frame.
+        # If we enter a child, we technically leave the frame but enter the child.
+        # Let's try simple logic first.
+        # If simple logic fails (flickering), we check winfo_containing.
+        
+        x, y = self.root.winfo_pointerxy()
+        widget_under_mouse = self.root.winfo_containing(x, y)
+        
+        # If the mouse is still inside the overlay frame or any of its children, don't collapse
+        if widget_under_mouse == self.queue_overlay_frame or \
+           str(widget_under_mouse).startswith(str(self.queue_overlay_frame)):
+            return
+
+        self.queue_overlay_expanded = False
+        self._update_queue_overlay()
         
         # Position the overlay in the top-right corner of the image frame
         if not self.queue_overlay_visible:
@@ -306,17 +447,48 @@ class ImageGeneratorApp:
         # Raise overlay to ensure it's on top
         self.queue_overlay_frame.lift()
     
-    def _on_queue_model_click(self, model: str):
-        """Handle click on a model in the queue overlay."""
-        if model in self.model_image_cache:
-            # Switch to this model and display its cached image
-            self.model_selection.set_selected_model(model, notify=False)
-            self.current_image = self.model_image_cache[model]
+    def _add_hover_effect(self, widget, normal_color, hover_color, underline=False):
+        """Add generic hover effect to a label."""
+        font_normal = ('Segoe UI', 8)
+        font_hover = ('Segoe UI', 8, 'underline') if underline else ('Segoe UI', 8)
+        
+        widget.bind('<Enter>', lambda e: widget.configure(foreground=hover_color, font=font_hover))
+        widget.bind('<Leave>', lambda e: widget.configure(foreground=normal_color, font=font_normal))
+
+    def _clear_generations_history(self, all: bool = False):
+        """Clear completed items from history."""
+        if all:
+            self.generation_manager.clear_completed()
+        else:
+            self.generation_manager.clear_seen()
+        
+        # Rebuild handled_request_ids from remaining requests
+        remaining = self.generation_manager.get_all_requests()
+        remaining_ids = {r.request_id for r in remaining}
+        # Intersect to keep only valid ones
+        self.handled_request_ids = self.handled_request_ids.intersection(remaining_ids)
+        
+        self._update_queue_overlay()
+    
+    def _on_queue_model_click(self, request_id: str):
+        """Handle click on a history item in the queue overlay."""
+        req = self.generation_manager.get_request(request_id)
+        if req and req.result_image:
+            # Switch to this model
+            self.model_selection.set_selected_model(req.model, notify=False)
+            
+            # Mark as seen
+            self.generation_manager.mark_seen(request_id)
+            
+            # Display the image from the request object (robust vs cache clearing)
+            self.current_image = req.result_image
             self.image_display_manager.processor.reset_view()
             self.image_display_manager.set_image(self.current_image)
             self._update_image_display()
-            self.model_selection.set_model_viewed(model)
-            self.status_label.config(text=StatusMessages.READY_CACHED)
+            self.status_label.config(text=f"Viewing Result: {req.model}")
+            
+            # Update overlay to show seen status
+            self._update_queue_overlay()
     
     def _create_status_bar(self):
         """Create the status bar."""
@@ -404,7 +576,10 @@ class ImageGeneratorApp:
             # Generate with the new model immediately
             current_prompt = self.prompt_input.get_text()
             if current_prompt:
-                self._start_generation(current_prompt)
+                self.model_selection.set_model_generating(model)
+                self.generation_manager.submit_request(model, current_prompt)
+                self._update_queue_overlay()
+                self.status_label.config(text=StatusMessages.GENERATING)
     
     def _on_auto_generate_change(self, enabled: bool):
         """Handle auto-generate toggle."""
@@ -439,12 +614,13 @@ class ImageGeneratorApp:
                 self._clear_model_cache()
                 self.current_prompt = current_prompt
             
-            if self.generation_queue.is_currently_generating():
-                # If currently generating, update the queue with the latest prompt
-                self.generation_queue.queue_prompt(current_prompt)
-            else:
-                # If not generating, start generation
-                self._start_generation(current_prompt)
+            # Always submit to queue, never block
+            model = self.model_selection.get_selected_model()
+            self.model_selection.set_model_generating(model)
+            self.generation_manager.submit_request(model, current_prompt)
+            # Update overlay immediately (optional, but good for responsiveness)
+            self._update_queue_overlay()
+            self.status_label.config(text=StatusMessages.GENERATING)
     
     def _on_enter(self, event):
         """Handle Enter key press."""
@@ -456,10 +632,11 @@ class ImageGeneratorApp:
                     self._clear_model_cache()
                     self.current_prompt = current_prompt
                 
-                if self.generation_queue.is_currently_generating():
-                    self.generation_queue.queue_prompt(current_prompt)
-                else:
-                    self._start_generation(current_prompt)
+                model = self.model_selection.get_selected_model()
+                self.model_selection.set_model_generating(model)
+                self.generation_manager.submit_request(model, current_prompt)
+                self._update_queue_overlay()
+                self.status_label.config(text=StatusMessages.GENERATING)
         return 'break'  # Prevents the default behavior of adding a newline
     
     def _on_mouse_wheel(self, event):
@@ -588,10 +765,11 @@ class ImageGeneratorApp:
                 self._clear_model_cache()
                 self.current_prompt = current_prompt
             
-            if self.generation_queue.is_currently_generating():
-                self.generation_queue.queue_prompt(current_prompt)
-            else:
-                self._start_generation(current_prompt)
+            model = self.model_selection.get_selected_model()
+            self.model_selection.set_model_generating(model)
+            self.generation_manager.submit_request(model, current_prompt)
+            self._update_queue_overlay()
+            self.status_label.config(text=StatusMessages.GENERATING)
     
     def parallel_generate(self):
         """Generate images in parallel for all starred models."""
@@ -606,40 +784,21 @@ class ImageGeneratorApp:
             self.status_label.config(text=StatusMessages.STAR_MODEL_FIRST)
             return
 
-        if self.generation_queue.is_currently_generating():
-            self.status_label.config(text=StatusMessages.WAIT_FOR_GENERATION)
-            return
-        if self.generation_queue.is_parallel_active():
-            self.status_label.config(text=StatusMessages.PARALLEL_IN_PROGRESS)
-            return
-        
         # Check if prompt has changed - if so, clear cache
         if current_prompt != self.current_prompt:
             self._clear_model_cache()
             self.current_prompt = current_prompt
         
-        # Start parallel generation
-        started = self.generation_queue.start_parallel_generation(
-            starred_models,
-            current_prompt,
-            self._generate_image_for_model
-        )
-        if not started:
-            self.status_label.config(text=StatusMessages.PARALLEL_UNABLE)
-            return
-        
-        # Reset generating indicators then mark starred models as in-progress
-        self.model_selection.clear_all_generating()
-        # Clear previous queue and track new queued models for overlay display
-        self.queued_models.clear()
-        self.models_with_errors.clear()
-        self.queued_models = starred_models.copy()
-        self._update_queue_overlay()
-        # Set all starred models as generating
+        # Submit all requests to the manager
         for model in starred_models:
+            self.generation_manager.submit_request(model, current_prompt)
+            # Optimistically mark as generating
             self.model_selection.set_model_generating(model)
         
-        self.status_label.config(text=f"Generating images for {len(starred_models)} models...")
+        # Trigger overlay update immediately
+        self._update_queue_overlay()
+        
+        self.status_label.config(text=f"Queued images for {len(starred_models)} models...")
     
     def parallel_generate_from_clipboard(self):
         """Generate images in parallel for all starred models using prompt from clipboard."""
@@ -664,112 +823,17 @@ class ImageGeneratorApp:
             self.status_label.config(text=StatusMessages.STAR_MODEL_FIRST)
             return
 
-        if self.generation_queue.is_currently_generating():
-            self.status_label.config(text=StatusMessages.WAIT_FOR_GENERATION)
-            return
-        if self.generation_queue.is_parallel_active():
-            self.status_label.config(text=StatusMessages.PARALLEL_IN_PROGRESS)
-            return
-        
         # Clear cache since we have a new prompt
         self._clear_model_cache()
         self.current_prompt = clipboard_prompt
         
-        # Start parallel generation
-        started = self.generation_queue.start_parallel_generation(
-            starred_models,
-            clipboard_prompt,
-            self._generate_image_for_model
-        )
-        if not started:
-            self.status_label.config(text=StatusMessages.PARALLEL_UNABLE)
-            return
-        
-        # Reset generating indicators then mark starred models as in-progress
-        self.model_selection.clear_all_generating()
-        # Clear previous queue and track new queued models for overlay display
-        self.queued_models.clear()
-        self.models_with_errors.clear()
-        self.queued_models = starred_models.copy()
-        self._update_queue_overlay()
-        # Set all starred models as generating
+        # Submit all requests to the manager
         for model in starred_models:
-            self.model_selection.set_model_generating(model)
-        
-        self.status_label.config(text=f"Generating from clipboard for {len(starred_models)} models...")
-    
-    def _generate_image_for_model(self, model: str, prompt: str):
-        """Generate an image for a specific model (used in parallel generation)."""
-        try:
-            # Use the image generation API
-            image = generate_image(model, prompt)
-            return image
-        except Exception as e:
-            raise RuntimeError(str(e)) from e
-    
-    def _start_generation(self, prompt: str):
-        """Start the image generation process."""
-        try:
-            selected_model = self.model_selection.get_selected_model()
-        except Exception as exc:
-            self.status_label.config(text=f"Error selecting model: {exc}")
-            return
-
-        # Mark the selected model as generating (show hourglass)
-        try:
-            self.model_selection.set_model_generating(selected_model)
-            # Clear previous queue and start fresh for new generation
-            if not self.generation_queue.is_parallel_active():
-                self.queued_models.clear()
-                self.models_with_errors.clear()
-                self.queued_models.append(selected_model)
-                self._update_queue_overlay()
-            # Update status from the main thread to avoid cross-thread UI calls
-            self.status_label.config(text=StatusMessages.GENERATING)
-            LOGGER.debug("Starting generation for model=%s prompt_len=%d", selected_model, len(prompt))
-        except Exception:
-            # Non-fatal: if UI update fails, continue generation
-            pass
-
-        self.generation_queue.start_generation_thread(
-            self._generate_image,
-            (prompt, selected_model)
-        )
-    
-    def _generate_image(self, prompt: str, model: str):
-        """Generate an image in a background thread."""
-        start_time = time.time()
-        try:
-            LOGGER.debug("Background thread running generate_image for model=%s", model)
-            image = generate_image(model, prompt)
-            LOGGER.debug("Background thread completed generate_image for model=%s", model)
-            generation_time = time.time() - start_time
-            self._single_generation_queue.put({
-                "type": "success",
-                "model": model,
-                "image": image,
-                "time": generation_time,
-            })
-            LOGGER.debug("Queued success result for model=%s", model)
-        except Exception as e:
-            self._single_generation_queue.put({
-                "type": "error",
-                "model": model,
-                "error": str(e),
-            })
-            LOGGER.exception("Error during background generation for model=%s", model)
-        finally:
-            self.generation_queue.finish_generation()
-            self._single_generation_queue.put({
-                "type": "cleanup",
-                "model": model,
-            })
-            LOGGER.debug("Queued cleanup for model=%s", model)
-    
+            self.generation_manager.submit_request(model, clipboard_prompt)
     def _update_image_display(self):
         """Update the displayed image."""
         self._schedule_image_update()
-    
+
     def _schedule_image_update(self):
         """Schedule an image update with current parameters."""
         if self.current_image:
@@ -789,11 +853,7 @@ class ImageGeneratorApp:
             params["frame_height"]
         )
     
-    def _check_for_next_generation(self):
-        """Check if there's another generation queued."""
-        next_prompt = self.generation_queue.get_next_prompt()
-        if next_prompt:
-            self._start_generation(next_prompt)
+
     
     def _clear_model_cache(self):
         """Clear all cached images and tick marks."""
@@ -802,121 +862,99 @@ class ImageGeneratorApp:
         # Also clear any generating indicators
         self.model_selection.clear_all_generating()
         # Clear queue overlay tracking
-        self.queued_models.clear()
         self.models_with_errors.clear()
         self._update_queue_overlay()
     
     def check_display_queue(self):
-        """Check for pending display updates and parallel generation results."""
+        """Check for pending display updates and generation results."""
         try:
+            # 1. Handle Display Updates (Main thread UI updates from background)
             while self.update_thread_manager.has_pending_display_updates():
                 photo = self.update_thread_manager.get_display_update()
                 if photo:
                     self.image_label.configure(image=photo)
-                    # Store reference on the app instance to avoid type-checker complaint
                     self._current_photo = photo
 
-            # Process sequential generation results
-            while not self._single_generation_queue.empty():
-                result = self._single_generation_queue.get_nowait()
-                LOGGER.debug("Processing sequential result type=%s model=%s", result.get("type"), result.get("model"))
-                self._handle_single_result(result)
+            # 2. Check Generation Requests
+            # Get all requests that are completed/failed/cancelled but not yet handled
+            all_requests = self.generation_manager.get_all_requests()
             
-            # Check for parallel generation results
-            while self.generation_queue.has_parallel_results():
-                result = self.generation_queue.get_parallel_result()
-                if result:
-                    LOGGER.debug("Processing parallel result for model=%s first=%s", result.get("model"), result.get("first"))
-                    self._handle_parallel_result(result)
+            # Update Overlay with active requests
+            # Update Overlay with all requests (for history)
+            self._update_queue_overlay_from_requests(all_requests)
+
+            # Process completed requests
+            for req in all_requests:
+                if req.request_id in self.handled_request_ids:
+                    continue
+                
+                if req.status == RequestStatus.COMPLETED:
+                    self._handle_completed_request(req)
+                    self.handled_request_ids.add(req.request_id)
+                elif req.status == RequestStatus.FAILED:
+                    self._handle_failed_request(req)
+                    self.handled_request_ids.add(req.request_id)
+                elif req.status == RequestStatus.CANCELLED:
+                    # Just mark as handled so we don't check again
+                    self.handled_request_ids.add(req.request_id)
+            
+            # Optional: Periodic cleanup of handled requests from manager to prevent memory leak
+            # (In a real app, might want to keep history, but here we can clean up old ones)
+            if len(self.handled_request_ids) > 100:
+                 self.generation_manager.clear_completed()
+                 self.handled_request_ids.clear()
+                 
         finally:
             self.root.after(DISPLAY_QUEUE_CHECK_INTERVAL, self.check_display_queue)
-    
-    def _handle_parallel_result(self, result: Dict[str, Any]):
-        """Handle a result from parallel generation."""
-        model = result["model"]
-        
-        if "error" in result:
-            # Handle error - track error for overlay
-            self.models_with_errors[model] = result['error']
-            self._update_queue_overlay()
-            self.root.after(0, lambda: self.status_label.config(text=f"Error for {model}: {result['error']}"))
-            self.root.after(0, lambda m=model: self.model_selection.clear_model_generating(m))
-        else:
-            # Handle successful generation
-            image = result["result"]
-            generation_time = result["time"]
-            
-            # Cache the generated image
-            self.model_image_cache[model] = image
-            
-            # Update model button to show tick
-            self.root.after(0, lambda m=model: self.model_selection.set_model_generated(m))
-            
-            # If this is the first completion, switch to this model and display the image
-            if result["first"]:
-                self.current_image = image
-                self.model_selection.set_selected_model(model, notify=False)
-                self.image_display_manager.processor.reset_view()
-                self.image_display_manager.set_image(self.current_image)
-                self._update_image_display()
-                self.model_selection.set_model_viewed(model)
-                self.root.after(0, lambda t=generation_time: self.status_label.config(
-                    text=f"Ready (Generated in {t:.1f}s) - Switched to first completed model"
-                ))
-            else:
-                # Update status to show completion without switching
-                self.root.after(0, lambda m=model, t=generation_time: self.status_label.config(
-                    text=f"Completed {m} in {t:.1f}s"
-                ))
-        
-        # Update the queue overlay
-        self._update_queue_overlay()
-        
-        # Check if all parallel generation is complete
-        if not self.generation_queue.is_parallel_active():
-            self.root.after(0, lambda: self.status_label.config(text=StatusMessages.ALL_PARALLEL_COMPLETE))
-    
-    def _handle_single_result(self, result: Dict[str, Any]):
-        """Handle sequential generation results on the main thread."""
-        result_type = result.get("type")
-        model = result.get("model")
 
-        if result_type == "success" and model and result.get("image") is not None:
-            image = result["image"]
-            generation_time = result.get("time", 0.0)
-            # Cache the generated image
+    def _handle_completed_request(self, req):
+        """Handle a successfully completed generation request."""
+        model = req.model
+        image = req.result_image
+        duration = req.duration
+        
+        # Cache image
+        if image:
             self.model_image_cache[model] = image
-            # Update model button to show tick
-            self.model_selection.set_model_generated(model)
-            # Update queue overlay to show completion
-            self._update_queue_overlay()
-            # Only switch to display the image if this model is still selected
-            if model == self.model_selection.get_selected_model():
-                self.current_image = image
-                self.image_display_manager.processor.reset_view()
-                self.image_display_manager.set_image(image)
-                self._update_image_display()
-                self.model_selection.set_model_viewed(model)
-                self.status_label.config(text=f"Ready (Generated in {generation_time:.1f}s)")
-            else:
-                # Update status to show completion without switching
-                self.status_label.config(text=f"Completed {model} in {generation_time:.1f}s")
-            LOGGER.debug("Single generation success handled for model=%s", model)
-        elif result_type == "error" and model:
-            error_msg = result.get("error", "Unknown error")
-            # Track error for overlay display
-            self.models_with_errors[model] = error_msg
-            self._update_queue_overlay()
-            self.status_label.config(text=f"Error: {error_msg}")
-            LOGGER.debug("Single generation error handled for model=%s message=%s", model, error_msg)
-        elif result_type == "cleanup" and model:
-            self.model_selection.clear_model_generating(model)
-            current_status = self.status_label.cget("text")
-            if current_status.lower().startswith("generating image"):
-                self.status_label.config(text=StatusMessages.READY)
-                LOGGER.debug("Cleanup forced status reset to Ready for model=%s", model)
-            # Start next queued generation, if any
-            self._check_for_next_generation()
+            
+        # Update UI: Tick mark
+        self.model_selection.set_model_generated(model)
+        
+        # Update Status
+        self.status_label.config(text=f"Completed {model} in {duration:.1f}s")
+        
+        # If this model is currently selected, show the image
+        if self.model_selection.get_selected_model() == model:
+             self.current_image = image
+             self.image_display_manager.processor.reset_view()
+             self.image_display_manager.set_image(image)
+             self._update_image_display()
+             self.model_selection.set_model_viewed(model)
+             self.generation_manager.mark_seen(req.request_id) # Mark as seen in manager/overlay
+             self.status_label.config(text=f"Ready (Generated in {duration:.1f}s)")
+             self.show_toast(f"Generated {model}!")
+
+    def _handle_failed_request(self, req):
+        """Handle a failed generation request."""
+        model = req.model
+        error_msg = req.error_message or "Unknown Error"
+        
+        self.models_with_errors[model] = error_msg
+        self.model_selection.clear_model_generating(model)
+        self.status_label.config(text=f"Error {model}: {error_msg}")
+        LOGGER.error(f"Generation failed for {model}: {error_msg}")
+
+    def _update_queue_overlay_from_requests(self, active_requests):
+        """Update the queue overlay based on active requests."""
+        # Map active requests to models to reuse existing overlay logic structure
+        # (Though we might want to make it request-based later)
+        
+        # We need to construct a list of 'queued_models' for the existing overlay logic,
+        # OR better, rewrite overlay logic to handle request objects.
+        # Let's rewrite the overlay update method separately.
+        # For now, just pass the list to the new overlay method.
+        self._update_queue_overlay(active_requests=active_requests)
+
 
     def show_toast(self, message: str, duration: int = 2000):
         """Show a temporary toast notification overlay."""
