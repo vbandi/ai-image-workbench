@@ -606,6 +606,37 @@ class PromptInputFrame(ttk.Frame):
     
     def clear_text(self):
         self.text_input.delete("1.0", tk.END)
+    
+    def set_enhancing(self, is_enhancing: bool):
+        """
+        Set the enhancing state for the prompt input.
+        
+        When enhancing:
+        - Disables enhance buttons to prevent multiple requests
+        - Disables prompt text input to prevent edits during enhancement
+        - Shows visual indicator that enhancement is in progress
+        
+        Args:
+            is_enhancing: True when enhancement is in progress, False when done
+        """
+        if is_enhancing:
+            # Disable enhance buttons
+            self.enhance_btn.state(['disabled'])
+            self.enhance_dir_btn.state(['disabled'])
+            # Disable prompt text input to prevent edits during enhancement
+            self.text_input.configure(state='disabled')
+            # Update button text to show enhancing state
+            self.enhance_btn.configure(text="✨ Enhancing...")
+            self.enhance_dir_btn.configure(text="⏳ Please wait...")
+        else:
+            # Re-enable enhance buttons
+            self.enhance_btn.state(['!disabled'])
+            self.enhance_dir_btn.state(['!disabled'])
+            # Re-enable prompt text input
+            self.text_input.configure(state='normal')
+            # Restore original button text
+            self.enhance_btn.configure(text="✨ Auto Enhance")
+            self.enhance_dir_btn.configure(text="✨ Enhance...")
 
 
 class TooltipManager:

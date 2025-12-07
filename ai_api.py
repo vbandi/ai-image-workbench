@@ -34,7 +34,7 @@ def enhance_prompt(prompt: str, directions: Optional[str] = None) -> str:
         user_message = f"Enhance the following prompt with these directions: '{directions}'\n\nPrompt: '{prompt}'"
 
     response = client.chat.completions.create(
-        model="gpt-4-turbo",
+        model="gpt-5.1",
         messages=[
             {"role": "system", "content": system_message},
             {"role": "user", "content": user_message}

@@ -26,6 +26,7 @@ from image_handler import ImageDisplayManager, TooltipManager
 from clipboard_manager import ClipboardManager
 from threading_utils import UpdateThreadManager, SpinnerAnimator
 from generation_manager import GenerationManager, RequestStatus
+from settings_manager import SettingsManager, WindowSettings
 
 
 def _configure_logger() -> logging.Logger:
@@ -67,6 +68,10 @@ class ImageGeneratorApp:
         # Configure grid weights
         self.root.grid_rowconfigure(0, weight=1)
         self.root.grid_columnconfigure(0, weight=1)
+        
+        # Initialize settings manager and load saved window state
+        self.settings_manager = SettingsManager()
+        self._saved_window_settings = self.settings_manager.load_window_settings()
         
         # Initialize managers and components
         self.generation_manager = GenerationManager()
@@ -115,6 +120,12 @@ class ImageGeneratorApp:
         
         # Configure inner splitter styling to make separator more visible
         self._configure_inner_splitter_styling()
+        
+        # Apply saved window state after UI is fully created
+        self._apply_saved_window_state()
+        
+        # Bind window close event to save state
+        self.root.protocol("WM_DELETE_WINDOW", self._on_window_close)
     
     def _create_main_frame(self):
         """Create the main application frame."""
@@ -161,9 +172,119 @@ class ImageGeneratorApp:
         self.sidebar_splitter.add(self.prompt_frame, weight=2)  # Prompt area can expand/shrink
         self.main_splitter.add(self.control_frame, weight=0)
         self.main_splitter.add(self.content_frame, weight=1)
-        self.root.after(0, lambda: self.main_splitter.sashpos(0, 350)) # Slightly wider sidebar
-        self.root.after(0, lambda: self.sidebar_splitter.sashpos(0, 400)) # Default model area height
+        # Default splitter positions (will be overridden by saved settings if available)
+        self._default_main_splitter_pos = 350
+        self._default_sidebar_splitter_pos = 400
+        self.root.after(0, lambda: self.main_splitter.sashpos(0, self._default_main_splitter_pos))
+        self.root.after(0, lambda: self.sidebar_splitter.sashpos(0, self._default_sidebar_splitter_pos))
     
+    def _apply_saved_window_state(self):
+        """Apply saved window position, size, and splitter positions."""
+        settings = self._saved_window_settings
+        
+        if not settings.is_valid():
+            LOGGER.debug("No valid saved window settings, using defaults")
+            return
+        
+        try:
+            # Apply window geometry (position and size)
+            if settings.width and settings.height:
+                # Check if the saved position is within current screen bounds
+                screen_width = self.root.winfo_screenwidth()
+                screen_height = self.root.winfo_screenheight()
+                
+                x = settings.x if settings.x is not None else 100
+                y = settings.y if settings.y is not None else 100
+                
+                # Ensure window is visible on screen (at least partially)
+                # Allow some buffer to ensure window is accessible
+                if x < -settings.width + 100:
+                    x = 100
+                if x > screen_width - 100:
+                    x = screen_width - settings.width
+                if y < 0:
+                    y = 0
+                if y > screen_height - 100:
+                    y = screen_height - settings.height
+                
+                geometry = f"{settings.width}x{settings.height}+{x}+{y}"
+                self.root.geometry(geometry)
+                LOGGER.debug(f"Applied window geometry: {geometry}")
+            
+            # Apply maximized state
+            if settings.is_maximized:
+                self.root.state('zoomed')
+                LOGGER.debug("Restored maximized state")
+            
+            # Apply splitter positions after a short delay to ensure window is rendered
+            def apply_splitter_positions():
+                try:
+                    if settings.main_splitter_position is not None:
+                        self.main_splitter.sashpos(0, settings.main_splitter_position)
+                        LOGGER.debug(f"Applied main splitter position: {settings.main_splitter_position}")
+                    
+                    if settings.sidebar_splitter_position is not None:
+                        self.sidebar_splitter.sashpos(0, settings.sidebar_splitter_position)
+                        LOGGER.debug(f"Applied sidebar splitter position: {settings.sidebar_splitter_position}")
+                except Exception as e:
+                    LOGGER.warning(f"Error applying splitter positions: {e}")
+            
+            # Delay splitter position application to ensure window is fully visible
+            self.root.after(100, apply_splitter_positions)
+            
+        except Exception as e:
+            LOGGER.warning(f"Error applying saved window state: {e}")
+    
+    def _save_window_state(self):
+        """Save current window position, size, and splitter positions."""
+        try:
+            # Check if window is maximized
+            is_maximized = self.root.state() == 'zoomed'
+            
+            # Get window geometry
+            # Use winfo_geometry for actual window position/size
+            geometry = self.root.geometry()
+            # Parse geometry string (e.g., "1024x768+100+50")
+            parts = geometry.replace('x', '+').split('+')
+            width = int(parts[0])
+            height = int(parts[1])
+            x = int(parts[2]) if len(parts) > 2 else 0
+            y = int(parts[3]) if len(parts) > 3 else 0
+            
+            # If maximized, we want to save the restored (non-maximized) geometry
+            # but Tkinter doesn't easily provide this, so we save current and note maximized
+            
+            # Get splitter positions
+            try:
+                main_splitter_pos = self.main_splitter.sashpos(0)
+            except Exception:
+                main_splitter_pos = None
+            
+            try:
+                sidebar_splitter_pos = self.sidebar_splitter.sashpos(0)
+            except Exception:
+                sidebar_splitter_pos = None
+            
+            settings = WindowSettings(
+                x=x,
+                y=y,
+                width=width,
+                height=height,
+                main_splitter_position=main_splitter_pos,
+                sidebar_splitter_position=sidebar_splitter_pos,
+                is_maximized=is_maximized
+            )
+            
+            self.settings_manager.save_window_settings(settings)
+            LOGGER.debug(f"Saved window state: {settings.to_dict()}")
+            
+        except Exception as e:
+            LOGGER.warning(f"Error saving window state: {e}")
+    
+    def _on_window_close(self):
+        """Handle window close event - save state and exit."""
+        self._save_window_state()
+        self.root.destroy()
 
     def _create_model_selection(self):
         """Create the model selection component."""
@@ -722,29 +843,51 @@ class ImageGeneratorApp:
         return 'break'
     
     def enhance_prompt(self, directions: Optional[str] = None):
-        """Enhance the prompt using AI API."""
+        """Enhance the prompt using AI API (async - runs in background thread)."""
         current_prompt = self.prompt_input.get_text()
         if not current_prompt:
             self.status_label.config(text=StatusMessages.ENTER_PROMPT_TO_ENHANCE)
             return
         
-        try:
-            self.status_label.config(text=StatusMessages.ENHANCING)
-            enhanced_prompt = enhance_prompt(current_prompt, directions=directions)
-            
-            # Clear cache since prompt is changing
-            self._clear_model_cache()
-            
-            self.prompt_input.set_text(enhanced_prompt)
-            self.current_prompt = enhanced_prompt
-            self.status_label.config(text=StatusMessages.ENHANCED)
-            
-            # Auto-generate if enabled in prompt input
-            if self.prompt_input.should_autogenerate_after_enhance():
-                self.manual_generate()
-                
-        except Exception as e:
-            self.status_label.config(text=f"Error enhancing prompt: {e}")
+        # Show enhancing state in UI
+        self.prompt_input.set_enhancing(True)
+        self.status_label.config(text=StatusMessages.ENHANCING)
+        
+        def do_enhance():
+            """Background thread function to call the enhancement API."""
+            try:
+                enhanced = enhance_prompt(current_prompt, directions=directions)
+                # Schedule UI update on main thread
+                self.root.after(0, lambda: self._on_enhance_complete(enhanced))
+            except Exception as e:
+                # Schedule error handling on main thread
+                self.root.after(0, lambda: self._on_enhance_error(str(e)))
+        
+        # Start background thread
+        thread = threading.Thread(target=do_enhance, daemon=True)
+        thread.start()
+    
+    def _on_enhance_complete(self, enhanced_prompt: str):
+        """Handle successful prompt enhancement (called on main thread)."""
+        # Restore UI state
+        self.prompt_input.set_enhancing(False)
+        
+        # Clear cache since prompt is changing
+        self._clear_model_cache()
+        
+        self.prompt_input.set_text(enhanced_prompt)
+        self.current_prompt = enhanced_prompt
+        self.status_label.config(text=StatusMessages.ENHANCED)
+        
+        # Auto-generate if enabled in prompt input
+        if self.prompt_input.should_autogenerate_after_enhance():
+            self.manual_generate()
+    
+    def _on_enhance_error(self, error_message: str):
+        """Handle prompt enhancement error (called on main thread)."""
+        # Restore UI state
+        self.prompt_input.set_enhancing(False)
+        self.status_label.config(text=f"Error enhancing prompt: {error_message}")
     
     def enhance_prompt_with_directions(self):
         """Ask for directions and then enhance the prompt."""
