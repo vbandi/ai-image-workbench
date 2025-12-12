@@ -351,6 +351,14 @@ class ImageGeneratorApp:
         self.queue_overlay_visible = False
         self.queue_overlay_expanded = False # Track expanded state
         self.queue_model_labels: Dict[str, tk.Label] = {}
+
+        # Overlay view options/state
+        self.queue_overlay_show_thumbnails = tk.BooleanVar(value=False)
+        self.queue_thumbnail_images: Dict[str, ImageTk.PhotoImage] = {}
+
+        # Debounced collapse to prevent disappearing during redraws
+        self._overlay_collapse_after_id: Optional[str] = None
+        self._overlay_rebuilding: bool = False
         
         # Bind hover events for auto-expand
         self.queue_overlay_frame.bind('<Enter>', self._on_overlay_hover_enter)
@@ -370,9 +378,21 @@ class ImageGeneratorApp:
         # so we don't filter out finished ones.
         relevant_items = active_requests # All tracked requests
         
+        show_thumbnails = bool(self.queue_overlay_show_thumbnails.get())
+
         # Calculate state hash to prevent flashing (only redraw if changed)
-        # Hash comprises: count + expanded_state + for each item: id, status
-        current_hash_parts = [str(len(relevant_items)), str(self.queue_overlay_expanded)]
+        # Hash comprises: count + expanded_state + thumbnails + model status sets + for each item: id, status, seen
+        current_hash_parts = [str(len(relevant_items)), str(self.queue_overlay_expanded), str(show_thumbnails)]
+
+        # Include model list status so overlay stays in sync even when only tick/eye state changes
+        try:
+            viewed_models = sorted(getattr(self.model_selection, "models_viewed", set()))
+            ticked_models = sorted(getattr(self.model_selection, "models_with_ticks", set()))
+        except Exception:
+            viewed_models = []
+            ticked_models = []
+        current_hash_parts.append("viewed:" + ",".join(viewed_models))
+        current_hash_parts.append("ticked:" + ",".join(ticked_models))
         # Sort for stable hash
         sorted_for_hash = sorted(relevant_items, key=lambda r: r.request_id)
         for r in sorted_for_hash:
@@ -393,9 +413,14 @@ class ImageGeneratorApp:
             self.queue_overlay_visible = True
             
         # Clear existing labels
-        for widget in self.queue_overlay_frame.winfo_children():
-            widget.destroy()
-        self.queue_model_labels.clear()
+        self._overlay_rebuilding = True
+        try:
+            for widget in self.queue_overlay_frame.winfo_children():
+                widget.destroy()
+            self.queue_model_labels.clear()
+            self.queue_thumbnail_images.clear()
+        finally:
+            self._overlay_rebuilding = False
         
         # --- Header Section ---
         header_frame = tk.Frame(self.queue_overlay_frame, bg='#ffffff')
@@ -420,6 +445,23 @@ class ImageGeneratorApp:
         btn_frame.pack(side='right')
 
         if self.queue_overlay_expanded:
+            # View toggle: thumbnails
+            thumbs_cb = tk.Checkbutton(
+                btn_frame,
+                text="Thumbnails",
+                variable=self.queue_overlay_show_thumbnails,
+                command=lambda: self._update_queue_overlay(),
+                background='#ffffff',
+                activebackground='#ffffff',
+                foreground='#333333',
+                selectcolor='#ffffff',
+                highlightthickness=0,
+                bd=0,
+                font=('Segoe UI', 8),
+                cursor='hand2'
+            )
+            thumbs_cb.pack(side='right', padx=(8, 0))
+
             if any(r.status in (RequestStatus.COMPLETED, RequestStatus.FAILED, RequestStatus.CANCELLED) for r in relevant_items):
                 # Clear All
                 clear_all_btn = tk.Label(
@@ -452,6 +494,13 @@ class ImageGeneratorApp:
         if self.queue_overlay_expanded:
             # Sort items: Newest first (by created_at)
             sorted_items = sorted(relevant_items, key=lambda r: r.created_at, reverse=True)
+
+            # For syncing model-level viewed state to the latest completed request
+            latest_completed_request_id_by_model: Dict[str, str] = {}
+            for r in sorted_items:
+                if r.status == RequestStatus.COMPLETED:
+                    if r.model not in latest_completed_request_id_by_model:
+                        latest_completed_request_id_by_model[r.model] = r.request_id
             
             # Limit the display if too many items (scrolling would be better, but for now cap it)
             display_items = sorted_items[:15] # Show latest 15
@@ -469,13 +518,24 @@ class ImageGeneratorApp:
                     fg_color = '#dc3545'  # Red
                     state_text = "Failed"
                 elif req.status == RequestStatus.COMPLETED:
-                    if req.seen:
-                        icon = "👁" # Eye for seen
-                        fg_color = '#28a745'  # Still green-ish but maybe darker?
+                    model_is_viewed = False
+                    try:
+                        model_is_viewed = model in getattr(self.model_selection, "models_viewed", set())
+                    except Exception:
+                        model_is_viewed = False
+
+                    is_latest_completed_for_model = (
+                        latest_completed_request_id_by_model.get(model) == req.request_id
+                    )
+                    is_viewed = bool(req.seen) or (model_is_viewed and is_latest_completed_for_model)
+
+                    if is_viewed:
+                        icon = "👁"  # Eye for viewed
+                        fg_color = '#28a745'
                         state_text = "Done (Viewed)"
                     else:
                         icon = "✓"
-                        fg_color = '#28a745'  # Green
+                        fg_color = '#28a745'
                         state_text = "Done (New)"
                 elif req.status == RequestStatus.PROCESSING:
                     icon = "⏳"
@@ -500,6 +560,39 @@ class ImageGeneratorApp:
                 # Create container frame for the row (to handle tooltip/clicks better)
                 row_frame = tk.Frame(self.queue_overlay_frame, bg='white')
                 row_frame.pack(anchor='w', fill='x', pady=1)
+
+                # Optional thumbnail
+                if show_thumbnails and req.status == RequestStatus.COMPLETED:
+                    thumb_source = req.result_image or self.model_image_cache.get(model)
+                    if thumb_source:
+                        try:
+                            thumb_img = thumb_source.copy()
+                            # Larger thumbnails for readability in the Generations view
+                            thumb_img.thumbnail((64, 64), Image.LANCZOS)
+                            thumb_photo = ImageTk.PhotoImage(thumb_img)
+                            self.queue_thumbnail_images[req.request_id] = thumb_photo
+                            thumb_label = tk.Label(
+                                row_frame,
+                                image=thumb_photo,
+                                background='#ffffff',
+                                cursor='hand2' if req.result_image else 'arrow'
+                            )
+                            thumb_label.pack(side='left', padx=(0, 6))
+
+                            # Make thumbnail behave like the row label for completed items
+                            if req.result_image:
+                                thumb_label.bind('<Button-1>', lambda e, rid=req.request_id: self._on_queue_model_click(rid))
+                                thumb_label.bind('<Enter>', lambda e, lbl=thumb_label: lbl.configure(background='#f0f0f0'))
+                                thumb_label.bind('<Leave>', lambda e, lbl=thumb_label: lbl.configure(background='#ffffff'))
+
+                            # Tooltip mirrors the text label tooltip
+                            if req.status == RequestStatus.FAILED:
+                                self.tooltip_manager.add_tooltip(thumb_label, f"Error: {req.error_message}")
+                            else:
+                                self.tooltip_manager.add_tooltip(thumb_label, f"Status: {state_text}")
+                        except Exception:
+                            # Best-effort: if thumbnail creation fails, just skip
+                            pass
                 
                 # Create clickable label
                 model_label = tk.Label(
@@ -533,39 +626,60 @@ class ImageGeneratorApp:
 
     def _on_overlay_hover_enter(self, event):
         """Handle mouse enter on overlay."""
-        self.queue_overlay_expanded = True
-        self._update_queue_overlay()
+        if self._overlay_collapse_after_id:
+            try:
+                self.root.after_cancel(self._overlay_collapse_after_id)
+            except Exception:
+                pass
+            self._overlay_collapse_after_id = None
+
+        if not self.queue_overlay_expanded:
+            self.queue_overlay_expanded = True
+            self._update_queue_overlay()
 
     def _on_overlay_hover_leave(self, event):
         """Handle mouse leave on overlay."""
-        # Add a small check or delay if needed, but for frame binding simple leave might work
-        # if we consider children.
-        # Actually, standard Tkinter <Leave> fires when entering a child.
-        # However, entering a child also keeps us 'in' the widget effectively for our logic.
-        # But Tkinter implementation is tricky.
-        # A clearer way: check pointer coordinates?
-        # Or rely on the fact that we pack children INTO this frame.
-        # If we enter a child, we technically leave the frame but enter the child.
-        # Let's try simple logic first.
-        # If simple logic fails (flickering), we check winfo_containing.
-        
-        x, y = self.root.winfo_pointerxy()
-        widget_under_mouse = self.root.winfo_containing(x, y)
-        
-        # If the mouse is still inside the overlay frame or any of its children, don't collapse
-        if widget_under_mouse == self.queue_overlay_frame or \
-           str(widget_under_mouse).startswith(str(self.queue_overlay_frame)):
+        # Debounce collapse to avoid disappearing while the overlay is rebuilding widgets
+        if self._overlay_rebuilding:
             return
 
-        self.queue_overlay_expanded = False
-        self._update_queue_overlay()
-        
-        # Position the overlay in the top-right corner of the image frame
+        if self._overlay_collapse_after_id:
+            try:
+                self.root.after_cancel(self._overlay_collapse_after_id)
+            except Exception:
+                pass
+
+        self._overlay_collapse_after_id = self.root.after(150, self._maybe_collapse_overlay)
+
+    def _maybe_collapse_overlay(self):
+        """Collapse overlay if the pointer is outside the overlay."""
+        self._overlay_collapse_after_id = None
+        if self._overlay_rebuilding:
+            return
+
+        x, y = self.root.winfo_pointerxy()
+        widget_under_mouse = self.root.winfo_containing(x, y)
+
+        if widget_under_mouse is None:
+            should_collapse = True
+        else:
+            widget_name = str(widget_under_mouse)
+            should_collapse = not (
+                widget_under_mouse == self.queue_overlay_frame or
+                widget_name.startswith(str(self.queue_overlay_frame))
+            )
+
+        if not should_collapse:
+            return
+
+        if self.queue_overlay_expanded:
+            self.queue_overlay_expanded = False
+            self._update_queue_overlay()
+
         if not self.queue_overlay_visible:
             self.queue_overlay_frame.place(relx=1.0, rely=0.0, anchor='ne', x=-10, y=10)
             self.queue_overlay_visible = True
-        
-        # Raise overlay to ensure it's on top
+
         self.queue_overlay_frame.lift()
     
     def _add_hover_effect(self, widget, normal_color, hover_color, underline=False):
@@ -600,6 +714,9 @@ class ImageGeneratorApp:
             
             # Mark as seen
             self.generation_manager.mark_seen(request_id)
+
+            # Sync main model list indicator
+            self.model_selection.set_model_viewed(req.model)
             
             # Display the image from the request object (robust vs cache clearing)
             self.current_image = req.result_image
@@ -692,6 +809,8 @@ class ImageGeneratorApp:
             self.image_display_manager.set_image(self.current_image)
             self._update_image_display()
             self.model_selection.set_model_viewed(model)
+            self._mark_latest_completed_request_seen_for_model(model)
+            self._update_queue_overlay()
             self.status_label.config(text=StatusMessages.READY_CACHED)
         else:
             # Generate with the new model immediately
@@ -701,6 +820,24 @@ class ImageGeneratorApp:
                 self.generation_manager.submit_request(model, current_prompt)
                 self._update_queue_overlay()
                 self.status_label.config(text=StatusMessages.GENERATING)
+
+    def _mark_latest_completed_request_seen_for_model(self, model: str) -> None:
+        """Best-effort sync: mark the latest completed request for a model as seen."""
+        try:
+            all_requests = self.generation_manager.get_all_requests()
+            latest = None
+            for r in all_requests:
+                if r.model != model:
+                    continue
+                if r.status != RequestStatus.COMPLETED:
+                    continue
+                if latest is None or r.created_at > latest.created_at:
+                    latest = r
+            if latest is not None:
+                self.generation_manager.mark_seen(latest.request_id)
+        except Exception:
+            # Best-effort only
+            return
     
     def _on_auto_generate_change(self, enabled: bool):
         """Handle auto-generate toggle."""
@@ -709,7 +846,13 @@ class ImageGeneratorApp:
 
     def _on_key_release(self, event):
         """Handle key release events for auto-generation."""
-        if not self.prompt_input.is_auto_generate_enabled() or event.keysym == 'Return':
+        ignored_keys = {'Left', 'Right', 'Up', 'Down', 'Home', 'End', 'Prior', 'Next', 
+                        'Shift_L', 'Shift_R', 'Control_L', 'Control_R', 'Alt_L', 'Alt_R', 
+                        'Caps_Lock', 'Num_Lock', 'Scroll_Lock', 'Pause', 'Print', 'Insert'}
+
+        if (not self.prompt_input.is_auto_generate_enabled() or 
+            event.keysym == 'Return' or 
+            event.keysym in ignored_keys):
             return
         
         # Use after_idle to ensure the text widget has fully updated before reading
@@ -730,10 +873,13 @@ class ImageGeneratorApp:
         self.debounce_timer = None
         current_prompt = self.prompt_input.get_text()
         if len(current_prompt) > 0:
-            # Check if prompt has changed - if so, clear cache
-            if current_prompt != self.current_prompt:
-                self._clear_model_cache()
-                self.current_prompt = current_prompt
+            # Check if prompt has changed
+            if current_prompt == self.current_prompt:
+                return
+
+            # Prompt has changed
+            self._clear_model_cache()
+            self.current_prompt = current_prompt
             
             # Always submit to queue, never block
             model = self.model_selection.get_selected_model()
