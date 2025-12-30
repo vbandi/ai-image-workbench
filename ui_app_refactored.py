@@ -443,6 +443,34 @@ class ImageGeneratorApp:
         # Clear Buttons
         btn_frame = tk.Frame(header_frame, bg='#ffffff')
         btn_frame.pack(side='right')
+        
+        # Navigation Buttons
+        nav_frame = tk.Frame(header_frame, bg='#ffffff')
+        nav_frame.pack(side='right', padx=(0, 8))
+
+        prev_btn = tk.Label(
+            nav_frame,
+            text="Prev Unseen",
+            font=('Segoe UI', 8),
+            background='#ffffff',
+            foreground='#0078d4',
+            cursor='hand2'
+        )
+        prev_btn.pack(side='left', padx=4)
+        prev_btn.bind('<Button-1>', lambda e: self._show_prev_unseen())
+        self._add_hover_effect(prev_btn, '#0078d4', '#004578', underline=True)
+
+        next_btn = tk.Label(
+            nav_frame,
+            text="Next Unseen",
+            font=('Segoe UI', 8),
+            background='#ffffff',
+            foreground='#0078d4',
+            cursor='hand2'
+        )
+        next_btn.pack(side='left', padx=4)
+        next_btn.bind('<Button-1>', lambda e: self._show_next_unseen())
+        self._add_hover_effect(next_btn, '#0078d4', '#004578', underline=True)
 
         if self.queue_overlay_expanded:
             # View toggle: thumbnails
@@ -727,6 +755,36 @@ class ImageGeneratorApp:
             
             # Update overlay to show seen status
             self._update_queue_overlay()
+    
+    def _show_next_unseen(self):
+        """Show the next (newest) unseen generation."""
+        requests = self.generation_manager.get_all_requests()
+        # Filter for unseen and completed
+        unseen = [r for r in requests if not r.seen and r.status == RequestStatus.COMPLETED]
+        
+        if not unseen:
+            self.show_toast("No unseen generations")
+            return
+            
+        # Requests are sorted Newest First by default
+        # So the first one is the Newest Unseen
+        target = unseen[0]
+        self._on_queue_model_click(target.request_id)
+
+    def _show_prev_unseen(self):
+        """Show the previous (oldest) unseen generation."""
+        requests = self.generation_manager.get_all_requests()
+        # Filter for unseen and completed
+        unseen = [r for r in requests if not r.seen and r.status == RequestStatus.COMPLETED]
+        
+        if not unseen:
+            self.show_toast("No unseen generations")
+            return
+            
+        # Requests are sorted Newest First by default
+        # So the last one is the Oldest Unseen
+        target = unseen[-1]
+        self._on_queue_model_click(target.request_id)
     
     def _create_status_bar(self):
         """Create the status bar."""

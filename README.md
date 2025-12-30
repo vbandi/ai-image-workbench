@@ -6,7 +6,7 @@ A Python desktop application for generating AI images using various models throu
 
 - **Multiple AI Models**: Support for various image generation models including Flux, Imagen, HiDream, Stable Diffusion, and more
 - **Model Memory System**: Caches generated images per model for quick comparison and re-selection
-- **Prompt Enhancement**: Uses OpenAI GPT to enhance user prompts for better results
+- **Prompt Enhancement**: Uses OpenRouter with Grok to enhance user prompts for better results
 - **Threading**: Background processing to keep the UI responsive during image generation
 - **Clipboard Integration**: Easy copying of generated images to clipboard
 - **Zoom and Pan**: Interactive image viewing with zoom and pan controls
@@ -32,7 +32,7 @@ Here's an example of the application running with a generated beautiful mountain
 
 3. Set up environment variables:
    - `FAL_KEY`: Your Fal.ai API key
-   - `OPENAI_API_KEY`: Your OpenAI API key (for prompt enhancement)
+   - `OPENROUTER_API_KEY`: Your OpenRouter API key (for prompt enhancement)
 
 ## Usage
 
@@ -51,7 +51,7 @@ python ui_app_refactored.py
 
 - `ui_app_refactored.py`: Main application entry point
 - `image_gen_api.py`: API integration for image generation
-- `ai_api.py`: OpenAI integration for prompt enhancement
+- `ai_api.py`: OpenRouter integration for prompt enhancement
 - `image_handler.py`: Image processing utilities
 - `config.py`: Application configuration and constants
 - `threading_utils.py`: Background processing management

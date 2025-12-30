@@ -13,7 +13,9 @@ MODEL_CATEGORIES = {
         "fal-ai/flux-pro/v1.1",
         "fal-ai/flux-pro/v1.1-ultra",
         "fal-ai/flux-2-flex",
-        "fal-ai/flux-2-pro"
+        "fal-ai/flux-2-pro",
+        "fal-ai/flux-2-max",
+        "fal-ai/flux-2/flash"
     ],
     "HiDream": [
         "fal-ai/hidream-i1-fast",
@@ -36,6 +38,7 @@ MODEL_CATEGORIES = {
         "fal-ai/bytedance/seedream/v4/text-to-image",
         "fal-ai/bytedance/seedream/v4.5/text-to-image",
         "fal-ai/wan/v2.2-5b/text-to-image",
+        "wan/v2.6/text-to-image",
         "fal-ai/gemini-25-flash-image",
         "fal-ai/gemini-3-pro-image-preview",
         "fal-ai/nano-banana",
@@ -50,11 +53,13 @@ MODEL_CATEGORIES = {
 MODEL_ABBREVIATIONS = {
     # Flux Models
     "Flux Schnell": "Flux Schnell",
-    "Flux 1 Srpo": "Flux SRPO",
+    "Flux-1-Srpo": "Flux SRPO",
     "Flux Pro V1.1": "Flux Pro",
     "Flux Pro V1.1 Ultra": "Flux Pro Ultra",
-    "Flux 2 Flex": "Flux 2 Flex",
-    "Flux 2 Pro": "Flux 2 Pro",
+    "Flux-2-Flex": "Flux 2 Flex",
+    "Flux-2-Pro": "Flux 2 Pro",
+    "Flux-2-Max": "Flux 2 Max",
+    "Flux-2 Flash": "Flux 2 Flash",
     # Imagen Models
     "Imagen4 Preview": "Imagen4",
     "Imagen4 Preview Fast": "Imagen4 Fast",
@@ -64,8 +69,8 @@ MODEL_ABBREVIATIONS = {
     "Hidream I1 Dev": "HiDream Dev",
     "Hidream I1 Full": "HiDream Full",
     # Stable Diffusion Models
-    "Stable Diffusion V35 Large": "SD35 Large",
-    "Stable Diffusion V35 Medium": "SD35 Medium",
+    "Stable-Diffusion-V35-Large": "SD35 Large",
+    "Stable-Diffusion-V35-Medium": "SD35 Medium",
     # Other Models
     "Luma Photon": "Luma Photon",
     "Ideogram V2": "Ideogram v2",
@@ -75,6 +80,7 @@ MODEL_ABBREVIATIONS = {
     "Bytedance Seedream V4 Text To Image": "Seedream v4",
     "Bytedance Seedream V4.5 Text To Image": "Seedream v4.5",
     "Wan V2.2-5B Text To Image": "WAN v2.2",
+    "Wan V2.6 Text To Image": "WAN v2.6",
     "Gemini 25 Flash Image": "Gemini Flash",
     "Gemini 3 Pro Image Preview": "Gemini 3 Pro",
     "Nano Banana": "Nano Banana",
@@ -90,7 +96,7 @@ SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇",
 
 # Application settings
 DEFAULT_MODEL = "fal-ai/flux/schnell"
-AUTO_GENERATE_MODELS = ["fal-ai/flux/schnell", "fal-ai/flux-1/srpo"]
+AUTO_GENERATE_MODELS = ["fal-ai/flux/schnell", "fal-ai/flux-1/srpo", "fal-ai/flux-2/flash"]
 
 # Window settings
 MIN_WINDOW_WIDTH = 1000
