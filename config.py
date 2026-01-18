@@ -7,7 +7,7 @@ from image_gen_api import MODELS
 
 # Model categories for organized display
 MODEL_CATEGORIES = {
-    "Flux": [
+"Flux": [
         "fal-ai/flux/schnell",
         "fal-ai/flux-1/srpo",
         "fal-ai/flux-pro/v1.1",
@@ -15,7 +15,11 @@ MODEL_CATEGORIES = {
         "fal-ai/flux-2-flex",
         "fal-ai/flux-2-pro",
         "fal-ai/flux-2-max",
-        "fal-ai/flux-2/flash"
+        "fal-ai/flux-2/flash",
+        "fal-ai/flux-2/turbo",
+        "fal-ai/flux-2/klein/9b/base",
+        "fal-ai/flux-2/klein/4b",
+        "fal-ai/flux-2/klein/4b/base"
     ],
     "HiDream": [
         "fal-ai/hidream-i1-fast",
@@ -43,9 +47,12 @@ MODEL_CATEGORIES = {
         "fal-ai/gemini-3-pro-image-preview",
         "fal-ai/nano-banana",
         "fal-ai/qwen-image",
-        "bria/fibo/generate",
+        "fal-ai/qwen-image-2512",
+        "fal-ai/glm-image",
+"bria/fibo/generate",
         "fal-ai/z-image/turbo",
-        "fal-ai/longcat-image"
+        "fal-ai/longcat-image",
+        "imagineart/imagineart-1.5-pro-preview/text-to-image"
     ]
 }
 
@@ -59,7 +66,11 @@ MODEL_ABBREVIATIONS = {
     "Flux-2-Flex": "Flux 2 Flex",
     "Flux-2-Pro": "Flux 2 Pro",
     "Flux-2-Max": "Flux 2 Max",
-    "Flux-2 Flash": "Flux 2 Flash",
+"Flux-2 Flash": "Flux 2 Flash",
+    "Flux-2 Turbo": "Flux 2 Turbo",
+    "Flux-2 Klein 9B Base": "Flux Klein 9B",
+    "Flux-2 Klein 4B": "Flux Klein 4B",
+    "Flux-2 Klein 4B Base": "Flux Klein 4B Base",
     # Imagen Models
     "Imagen4 Preview": "Imagen4",
     "Imagen4 Preview Fast": "Imagen4 Fast",
@@ -85,10 +96,14 @@ MODEL_ABBREVIATIONS = {
     "Gemini 3 Pro Image Preview": "Gemini 3 Pro",
     "Nano Banana": "Nano Banana",
     "Qwen Image": "Qwen Image",
+    "Qwen Image 2512": "Qwen 2.5",
     "Z-Image Turbo": "Z-Image Turbo",
-    # BRIA models
+# BRIA models
     "Bria Fibo Generate": "BRIA Fibo",
-    "Longcat-Image": "Longcat"
+    "Longcat-Image": "Longcat",
+    "Glm-Image": "GLM Image",
+    # ImagineArt models
+    "Imagineart Imagineart 1.5 Pro Preview Text To Image": "ImagineArt 1.5 Pro"
 }
 
 # UI Constants
@@ -96,7 +111,7 @@ SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇",
 
 # Application settings
 DEFAULT_MODEL = "fal-ai/flux/schnell"
-AUTO_GENERATE_MODELS = ["fal-ai/flux/schnell", "fal-ai/flux-1/srpo", "fal-ai/flux-2/flash"]
+AUTO_GENERATE_MODELS = ["fal-ai/flux/schnell", "fal-ai/flux-1/srpo", "fal-ai/flux-2/flash", "fal-ai/flux-2/klein/9b/base", "fal-ai/flux-2/klein/4b", "fal-ai/flux-2/klein/4b/base"]
 
 # Window settings
 MIN_WINDOW_WIDTH = 1000

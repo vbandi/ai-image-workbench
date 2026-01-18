@@ -225,6 +225,37 @@ MODEL_REGISTRY: Dict[str, ModelConfig] = {
         },
         "parser": "images_array",
     },
+    "fal-ai/flux-2/klein/9b/base": {
+        "arguments": {
+            "image_size": "landscape_4_3",
+            "guidance_scale": 5,
+            "num_inference_steps": 28,
+            "acceleration": "high",
+            "enable_safety_checker": False,
+            "output_format": "png",
+        },
+        "parser": "images_array",
+    },
+    "fal-ai/flux-2/klein/4b": {
+        "arguments": {
+            "image_size": "landscape_4_3",
+            "num_inference_steps": 4,
+            "enable_safety_checker": False,
+            "output_format": "png",
+        },
+        "parser": "images_array",
+    },
+    "fal-ai/flux-2/klein/4b/base": {
+        "arguments": {
+            "image_size": "landscape_4_3",
+            "guidance_scale": 5,
+            "num_inference_steps": 28,
+            "acceleration": "high",
+            "enable_safety_checker": False,
+            "output_format": "png",
+        },
+        "parser": "images_array",
+    },
     
     # SeeDream models
     "fal-ai/bytedance/seedream/v3/text-to-image": {
@@ -294,6 +325,26 @@ MODEL_REGISTRY: Dict[str, ModelConfig] = {
         },
         "parser": "images_array",
     },
+    "fal-ai/qwen-image-2512": {
+        "arguments": {
+            "num_images": 1,
+            "image_size": "landscape_4_3",
+            "enable_safety_checker": False,
+            "guidance_scale": 5,
+            "num_inference_steps": 28,
+        },
+        "parser": "images_array",
+    },
+    "fal-ai/glm-image": {
+        "arguments": {
+            "num_images": 1,
+            "image_size": "landscape_4_3",
+            "enable_safety_checker": False,
+            "output_format": "jpeg",
+            "sync_mode": True,
+        },
+        "parser": "images_array",
+    },
     
     # BRIA - single image response format
     "bria/fibo/generate": {
@@ -302,12 +353,33 @@ MODEL_REGISTRY: Dict[str, ModelConfig] = {
         },
         "parser": "single_image",
     },
-    "fal-ai/longcat-image": {
+"fal-ai/longcat-image": {
         "arguments": {
             "image_size": None,
             "num_images": None,
             "enable_safety_checker": None,
             "safety_tolerance": None,
+        },
+        "parser": "images_array",
+    },
+    
+    # ImagineArt models
+    "imagineart/imagineart-1.5-pro-preview/text-to-image": {
+        "arguments": {
+            "aspect_ratio": "4:3",
+        },
+        "parser": "images_array",
+    },
+    
+    # Flux 2 Turbo
+    "fal-ai/flux-2/turbo": {
+        "arguments": {
+            "image_size": "landscape_4_3",
+            "guidance_scale": 2.5,
+            "num_images": 1,
+            "enable_safety_checker": False,
+            "output_format": "jpeg",
+            "enable_prompt_expansion": True,
         },
         "parser": "images_array",
     },
@@ -332,6 +404,9 @@ MODELS = [
     "fal-ai/flux-2-pro",
     "fal-ai/flux-2-max",
     "fal-ai/flux-2/flash",
+    "fal-ai/flux-2/klein/9b/base",
+    "fal-ai/flux-2/klein/4b",
+    "fal-ai/flux-2/klein/4b/base",
     "fal-ai/imagen4/preview",
     "fal-ai/imagen4/preview/fast",
     "fal-ai/imagen4/preview/ultra",
@@ -353,9 +428,13 @@ MODELS = [
     "fal-ai/gemini-3-pro-image-preview",
     "fal-ai/nano-banana",
     "fal-ai/qwen-image",
-    "bria/fibo/generate",
+    "fal-ai/qwen-image-2512",
+    "fal-ai/glm-image",
+"bria/fibo/generate",
     "fal-ai/z-image/turbo",
     "fal-ai/longcat-image",
+    "imagineart/imagineart-1.5-pro-preview/text-to-image",
+    "fal-ai/flux-2/turbo",
 ]
 
 
