@@ -70,6 +70,26 @@ class WindowSettings:
         ])
 
 
+class ModelVisibilitySettings:
+    """Data class for model visibility settings."""
+    
+    def __init__(self, hidden_models: Optional[set] = None):
+        self.hidden_models = hidden_models or set()
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert settings to dictionary."""
+        return {
+            "hidden_models": list(self.hidden_models)
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ModelVisibilitySettings":
+        """Create settings from dictionary."""
+        return cls(
+            hidden_models=set(data.get("hidden_models", []))
+        )
+
+
 class SettingsManager:
     """Manager for saving and loading application settings."""
     
@@ -145,6 +165,64 @@ class SettingsManager:
                 json.dump(existing_data, f, indent=2)
             
             LOGGER.debug(f"Saved window settings: {settings.to_dict()}")
+            return True
+            
+        except Exception as e:
+            LOGGER.warning(f"Error saving settings: {e}")
+            return False
+    
+    def load_model_visibility_settings(self) -> ModelVisibilitySettings:
+        """Load model visibility settings from file.
+        
+        Returns:
+            ModelVisibilitySettings object with loaded values, or defaults if file doesn't exist.
+        """
+        if not self.settings_file.exists():
+            LOGGER.debug("Settings file not found, using defaults")
+            return ModelVisibilitySettings()
+        
+        try:
+            with open(self.settings_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            settings = ModelVisibilitySettings.from_dict(data.get("model_visibility", {}))
+            LOGGER.debug(f"Loaded model visibility settings: {settings.to_dict()}")
+            return settings
+            
+        except json.JSONDecodeError as e:
+            LOGGER.warning(f"Invalid settings file, using defaults: {e}")
+            return ModelVisibilitySettings()
+        except Exception as e:
+            LOGGER.warning(f"Error loading settings: {e}")
+            return ModelVisibilitySettings()
+    
+    def save_model_visibility_settings(self, settings: ModelVisibilitySettings) -> bool:
+        """Save model visibility settings to file.
+        
+        Args:
+            settings: ModelVisibilitySettings object to save.
+            
+        Returns:
+            True if save was successful, False otherwise.
+        """
+        try:
+            # Load existing settings to preserve other data
+            existing_data = {}
+            if self.settings_file.exists():
+                try:
+                    with open(self.settings_file, 'r', encoding='utf-8') as f:
+                        existing_data = json.load(f)
+                except Exception:
+                    pass
+            
+            # Update model visibility settings
+            existing_data["model_visibility"] = settings.to_dict()
+            
+            # Save to file
+            with open(self.settings_file, 'w', encoding='utf-8') as f:
+                json.dump(existing_data, f, indent=2)
+            
+            LOGGER.debug(f"Saved model visibility settings: {settings.to_dict()}")
             return True
             
         except Exception as e:

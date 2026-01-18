@@ -26,7 +26,7 @@ from image_handler import ImageDisplayManager, TooltipManager
 from clipboard_manager import ClipboardManager
 from threading_utils import UpdateThreadManager, SpinnerAnimator
 from generation_manager import GenerationManager, RequestStatus
-from settings_manager import SettingsManager, WindowSettings
+from settings_manager import SettingsManager, WindowSettings, ModelVisibilitySettings
 
 
 def _configure_logger() -> logging.Logger:
@@ -72,6 +72,7 @@ class ImageGeneratorApp:
         # Initialize settings manager and load saved window state
         self.settings_manager = SettingsManager()
         self._saved_window_settings = self.settings_manager.load_window_settings()
+        self._saved_model_visibility = self.settings_manager.load_model_visibility_settings()
         
         # Initialize managers and components
         self.generation_manager = GenerationManager()
@@ -291,8 +292,11 @@ class ImageGeneratorApp:
         self.model_selection = ModelSelectionFrame(
             self.model_frame,
             self._on_model_select,
-            DEFAULT_MODEL
+            DEFAULT_MODEL,
+            on_hidden_change=self._on_hidden_models_change
         )
+        # Apply saved model visibility settings
+        self.model_selection.set_hidden_models(self._saved_model_visibility.hidden_models)
     
 
     def _create_prompt_input(self):
@@ -843,6 +847,11 @@ class ImageGeneratorApp:
         # Bind inner splitter movement to handle prompt area resizing
         self.sidebar_splitter.bind('<ButtonRelease-1>', self._on_inner_splitter_move)
         self.sidebar_splitter.bind('<Configure>', self._on_inner_splitter_configure)
+    
+    def _on_hidden_models_change(self, hidden_models: set):
+        """Handle changes to hidden models - save to settings."""
+        settings = ModelVisibilitySettings(hidden_models=hidden_models)
+        self.settings_manager.save_model_visibility_settings(settings)
     
     def _on_model_select(self, model: str, is_reselection: bool = False):
         """Handle model selection change."""

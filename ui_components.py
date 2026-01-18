@@ -17,20 +17,25 @@ from config import (
 class ModelSelectionFrame(ttk.Frame):
     """Frame for model selection with categorized buttons."""
     
-    def __init__(self, parent, on_model_select: Callable[[str, bool], None], default_model: str):
+    def __init__(self, parent, on_model_select: Callable[[str, bool], None], default_model: str, on_hidden_change: Optional[Callable[[set], None]] = None):
         """Initialize the model selection frame."""
         super().__init__(parent)
         self.on_model_select = on_model_select
+        self.on_hidden_change = on_hidden_change
         self.model_var = tk.StringVar(value=default_model)
         self.model_buttons: Dict[str, ttk.Button] = {}
         self.star_buttons: Dict[str, ttk.Button] = {}
+        self.hide_buttons: Dict[str, ttk.Button] = {}
         self.model_button_texts: Dict[str, str] = {}  # Store original button text
         self.models_with_ticks: set = set()  # Track which models have generated images
         self.models_generating: set = set()  # Track which models are currently generating (hourglass)
         self.models_viewed: set = set()  # Track which models have been viewed
         self.starred_models: set = set()
+        self.hidden_models: set = set()
         self.model_order = []  # Preserve insertion order for starred models retrieval
         self.tooltip_manager = TooltipManager()
+        self.hidden_expanded = False  # Track if hidden group is expanded
+        self.hidden_toggle_btn = None  # Reference to the hidden group toggle button
         
         # Create the label frame
         self.labelframe = ttk.LabelFrame(parent, text="Model Selection", padding=(10, 5))
@@ -150,11 +155,57 @@ class ModelSelectionFrame(ttk.Frame):
               background=[('active', HOVER_BUTTON_COLOR), ('!active', 'white')])
         style.map('Star.Selected.TButton',
               background=[('active', HOVER_BUTTON_COLOR), ('!active', 'white')])
+
+        # Configure hide toggle buttons
+        style.configure('Hide.TButton',
+                padding=(4, 2),
+                width=2,
+                background='white',
+                relief='flat',
+                font=BUTTON_FONT)
+        style.configure('Hide.Selected.TButton',
+                padding=(4, 2),
+                width=2,
+                background='white',
+                relief='flat',
+                font=BUTTON_BOLD_FONT,
+                foreground='#6b7280') # Gray color for hide
+        style.map('Hide.TButton',
+              background=[('active', HOVER_BUTTON_COLOR), ('!active', 'white')])
+        style.map('Hide.Selected.TButton',
+              background=[('active', HOVER_BUTTON_COLOR), ('!active', 'white')])
+
+        # Configure hidden group toggle button
+        style.configure('HiddenGroup.TButton',
+                padding=(8, 4),
+                background='#f3f4f6',
+                relief='flat',
+                font=BUTTON_BOLD_FONT,
+                foreground='#374151')
+        style.map('HiddenGroup.TButton',
+              background=[('active', '#e5e7eb'), ('!active', '#f3f4f6')])
     
     def create_model_matrix(self):
         """Create a vertical list of model selection buttons organized by category."""
+        # Clear existing widgets
+        for widget in self.model_matrix_frame.winfo_children():
+            widget.destroy()
+        
+        self.model_buttons.clear()
+        self.star_buttons.clear()
+        self.hide_buttons.clear()
+        self.model_order.clear()
+        
         row = 0
+        
+        # Create regular categories (excluding hidden models)
         for category, models in MODEL_CATEGORIES.items():
+            # Filter out hidden models
+            visible_models = [m for m in models if m not in self.hidden_models]
+            
+            if not visible_models:
+                continue  # Skip empty categories
+                
             # Create category label
             category_label = ttk.Label(
                 self.model_matrix_frame,
@@ -166,61 +217,108 @@ class ModelSelectionFrame(ttk.Frame):
             category_label.grid(row=row, column=0, sticky="w", padx=2, pady=(12, 4))
             row += 1
             
-            # Create buttons for each model in this category, stacked vertically
-            for model in models:
-                # Create a shorter display name for the button
-                display_name = model.replace("fal-ai/", "").replace("/", " ").title()
-
-                # Use abbreviation if available, otherwise use the cleaned-up name
-                display_name = MODEL_ABBREVIATIONS.get(display_name, display_name)
-
-                # Track order for deterministic starred model retrieval
-                self.model_order.append(model)
-
-                # Store the original text for this model
-                self.model_button_texts[model] = display_name
-
-                # Create a container row for star toggle and model button
-                row_frame = ttk.Frame(self.model_matrix_frame)
-                row_frame.grid(row=row, column=0, padx=2, pady=2, sticky="ew")
-                row_frame.grid_columnconfigure(1, weight=1)
-
-                # Star toggle button sits on the left
-                star_btn = ttk.Button(
-                    row_frame,
-                    command=lambda m=model: self.toggle_star(m),
-                    style='Star.TButton'
-                )
-                star_btn.grid(row=0, column=0, padx=(0, 4))
-                self.tooltip_manager.add_tooltip(star_btn, "Star model for parallel generation")
-                self.star_buttons[model] = star_btn
-
-                # Model selection button
-                btn = ttk.Button(
-                    row_frame,
-                    text=display_name,
-                    command=lambda m=model: self.select_model(m),
-                    style='Model.TButton'
-                )
-                btn.grid(row=0, column=1, sticky="ew")
-
-                # Add tooltip with full model name
-                full_name = model.replace("fal-ai/", "").replace("/", " ").title()
-                self.tooltip_manager.add_tooltip(btn, full_name)
-
-                self.model_buttons[model] = btn
-
-                # Configure button style based on selection
-                if model == self.model_var.get():
-                    btn.configure(style='Model.Selected.TButton')
-
-                # Initialize the star button state
-                self._update_star_button(model)
-
-                row += 1
+            # Create buttons for each visible model in this category
+            for model in visible_models:
+                row = self._create_model_row(model, row)
+        
+        # Create hidden models group at the bottom
+        if self.hidden_models:
+            # Hidden group header with toggle button
+            hidden_header_frame = ttk.Frame(self.model_matrix_frame)
+            hidden_header_frame.grid(row=row, column=0, padx=2, pady=(12, 4), sticky="ew")
+            hidden_header_frame.grid_columnconfigure(1, weight=1)
+            
+            # Toggle button for expanding/collapsing hidden group
+            self.hidden_toggle_btn = ttk.Button(
+                hidden_header_frame,
+                text="▶" if not self.hidden_expanded else "▼",
+                command=self.toggle_hidden_group,
+                style='HiddenGroup.TButton',
+                width=3
+            )
+            self.hidden_toggle_btn.grid(row=0, column=0, padx=(0, 4))
+            
+            # Hidden group label
+            hidden_label = ttk.Label(
+                hidden_header_frame,
+                text=f"Hidden ({len(self.hidden_models)})",
+                font=HEADER_FONT,
+                background='#f3f4f6',
+                foreground='#374151'
+            )
+            hidden_label.grid(row=0, column=1, sticky="w")
+            
+            row += 1
+            
+            # Create hidden model buttons if expanded
+            if self.hidden_expanded:
+                for model in sorted(self.hidden_models):  # Sort for consistent ordering
+                    row = self._create_model_row(model, row, is_hidden=True)
         
         # Configure column weights for responsive layout
         self.model_matrix_frame.grid_columnconfigure(0, weight=1)
+    
+    def _create_model_row(self, model: str, row: int, is_hidden: bool = False) -> int:
+        """Create a row for a single model with all its buttons."""
+        # Create a shorter display name for the button
+        display_name = model.replace("fal-ai/", "").replace("/", " ").title()
+        display_name = MODEL_ABBREVIATIONS.get(display_name, display_name)
+
+        # Track order for deterministic starred model retrieval
+        self.model_order.append(model)
+        
+        # Store the original text for this model
+        self.model_button_texts[model] = display_name
+
+        # Create a container row for buttons and model button
+        row_frame = ttk.Frame(self.model_matrix_frame)
+        row_frame.grid(row=row, column=0, padx=2, pady=2, sticky="ew")
+        row_frame.grid_columnconfigure(2, weight=1)  # Model button expands
+
+        # Star toggle button
+        star_btn = ttk.Button(
+            row_frame,
+            command=lambda m=model: self.toggle_star(m),
+            style='Star.TButton'
+        )
+        star_btn.grid(row=0, column=0, padx=(0, 2))
+        self.tooltip_manager.add_tooltip(star_btn, "Star model for parallel generation")
+        self.star_buttons[model] = star_btn
+
+        # Hide toggle button
+        hide_btn = ttk.Button(
+            row_frame,
+            command=lambda m=model: self.toggle_hide(m),
+            style='Hide.TButton'
+        )
+        hide_btn.grid(row=0, column=1, padx=(0, 4))
+        self.tooltip_manager.add_tooltip(hide_btn, "Hide/unhide this model")
+        self.hide_buttons[model] = hide_btn
+
+        # Model selection button
+        btn = ttk.Button(
+            row_frame,
+            text=display_name,
+            command=lambda m=model: self.select_model(m),
+            style='Model.TButton'
+        )
+        btn.grid(row=0, column=2, sticky="ew")
+
+        # Add tooltip with full model name
+        full_name = model.replace("fal-ai/", "").replace("/", " ").title()
+        self.tooltip_manager.add_tooltip(btn, full_name)
+
+        self.model_buttons[model] = btn
+
+        # Configure button style based on selection
+        if model == self.model_var.get():
+            btn.configure(style='Model.Selected.TButton')
+
+        # Initialize button states
+        self._update_star_button(model)
+        self._update_hide_button(model)
+
+        return row + 1
     
     def select_model(self, model: str):
         """Select a model and update button states."""
@@ -359,6 +457,63 @@ class ModelSelectionFrame(ttk.Frame):
             btn.configure(text="★", style='Star.Selected.TButton')
         else:
             btn.configure(text="☆", style='Star.TButton')
+    
+    def toggle_hide(self, model: str):
+        """Toggle the hidden state for a model."""
+        if model not in self.model_buttons:
+            return
+
+        # Don't allow hiding the currently selected model
+        if model == self.model_var.get():
+            return
+
+        if model in self.hidden_models:
+            self.hidden_models.remove(model)
+        else:
+            self.hidden_models.add(model)
+        self._update_hide_button(model)
+        self.create_model_matrix()  # Recreate the matrix to move the model
+        
+        # Notify callback if provided
+        if self.on_hidden_change:
+            self.on_hidden_change(self.hidden_models.copy())
+
+    def set_hidden(self, model: str, hidden: bool):
+        """Explicitly set the hidden state for a model."""
+        if model not in self.model_buttons:
+            return
+
+        if hidden:
+            self.hidden_models.add(model)
+        else:
+            self.hidden_models.discard(model)
+        self._update_hide_button(model)
+        self.create_model_matrix()  # Recreate the matrix to move the model
+
+    def get_hidden_models(self) -> set:
+        """Return the set of hidden models."""
+        return self.hidden_models.copy()
+
+    def set_hidden_models(self, hidden_models: set):
+        """Set the hidden models and refresh the UI."""
+        self.hidden_models = hidden_models.copy()
+        self.create_model_matrix()
+
+    def toggle_hidden_group(self):
+        """Toggle the expanded/collapsed state of the hidden group."""
+        self.hidden_expanded = not self.hidden_expanded
+        self.create_model_matrix()
+
+    def _update_hide_button(self, model: str):
+        """Update hide button appearance for a model."""
+        btn = self.hide_buttons.get(model)
+        if not btn:
+            return
+
+        if model in self.hidden_models:
+            btn.configure(text="👁", style='Hide.Selected.TButton')  # Eye icon for hidden
+        else:
+            btn.configure(text="🙈", style='Hide.TButton')  # Monkey hiding eyes for visible
 
 
 class PromptInputFrame(ttk.Frame):
