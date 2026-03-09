@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("ImageGenDotNet")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+00654a1c75f5daab0cd6357e748b1ea2d294587a")]
 [assembly: System.Reflection.AssemblyProductAttribute("ImageGenDotNet")]
 [assembly: System.Reflection.AssemblyTitleAttribute("ImageGenDotNet")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

@@ -46,13 +46,22 @@ MODEL_CATEGORIES = {
         "fal-ai/gemini-25-flash-image",
         "fal-ai/gemini-3-pro-image-preview",
         "fal-ai/nano-banana",
+        "fal-ai/nano-banana-2",
         "fal-ai/qwen-image",
         "fal-ai/qwen-image-2512",
+        "fal-ai/qwen-image-max/text-to-image",
+        "fal-ai/qwen-image-2/text-to-image",
+        "fal-ai/qwen-image-2/pro/text-to-image",
         "fal-ai/glm-image",
+        "xai/grok-imagine-image",
+        "fal-ai/hunyuan-image/v3/instruct/text-to-image",
 "bria/fibo/generate",
+        "fal-ai/z-image/base",
         "fal-ai/z-image/turbo",
         "fal-ai/longcat-image",
-        "imagineart/imagineart-1.5-pro-preview/text-to-image"
+        "imagineart/imagineart-1.5-pro-preview/text-to-image",
+        "fal-ai/kling-image/v3/text-to-image",
+        "fal-ai/bitdance"
     ]
 }
 
@@ -95,15 +104,27 @@ MODEL_ABBREVIATIONS = {
     "Gemini 25 Flash Image": "Gemini Flash",
     "Gemini 3 Pro Image Preview": "Gemini 3 Pro",
     "Nano Banana": "Nano Banana",
+    "Nano-Banana-2": "Nano Banana 2",
     "Qwen Image": "Qwen Image",
     "Qwen Image 2512": "Qwen 2.5",
+    "Qwen-Image-Max Text-To-Image": "Qwen Image Max",
+    "Qwen-Image-2 Text-To-Image": "Qwen Image 2",
+    "Qwen-Image-2 Pro Text-To-Image": "Qwen Image 2 Pro",
     "Z-Image Turbo": "Z-Image Turbo",
+    "Xai Grok-Imagine-Image": "Grok Imagine",
+    "Hunyuan-Image V3 Instruct Text-To-Image": "Hunyuan V3 Instruct",
+    "Qwen-Image-Max Text-To-Image": "Qwen Image Max",
+    "Z-Image Base": "Z-Image Base",
 # BRIA models
     "Bria Fibo Generate": "BRIA Fibo",
     "Longcat-Image": "Longcat",
     "Glm-Image": "GLM Image",
     # ImagineArt models
-    "Imagineart Imagineart 1.5 Pro Preview Text To Image": "ImagineArt 1.5 Pro"
+    "Imagineart Imagineart 1.5 Pro Preview Text To Image": "ImagineArt 1.5 Pro",
+    # Kling Image models
+    "Kling-Image V3 Text-To-Image": "Kling Image v3",
+    # Bitdance
+    "Bitdance": "Bitdance"
 }
 
 # UI Constants
@@ -122,7 +143,7 @@ DEFAULT_SAVE_FORMAT = "JPEG"
 DEFAULT_SAVE_EXTENSION = ".jpg"
 SUPPORTED_SAVE_FORMATS = [("JPEG files", "*.jpg"), ("All files", "*.*")]
 
-# UI Styling Constants
+# UI Styling Constants - Light Mode (Legacy - kept for backwards compatibility)
 BACKGROUND_COLOR = '#f5f5f5'
 SELECTED_BUTTON_COLOR = '#e0e0e0'
 HOVER_BUTTON_COLOR = '#f0f0f0'
@@ -135,6 +156,117 @@ ACCENT_HOVER_COLOR = '#0056b3'
 TEXT_COLOR = '#333333'
 PROMPT_FONT = ('Segoe UI', 11)
 HEADER_FONT = ('Segoe UI', 12, 'bold')
+
+# Theme Color Definitions
+THEMES = {
+    'light': {
+        'background': '#f5f5f5',
+        'text': '#333333',
+        'button_bg': '#ffffff',
+        'selected_button': '#e0e0e0',
+        'hover_button': '#f0f0f0',
+        'active_button': '#d0d0d0',
+        'accent': '#007bff',
+        'accent_hover': '#0056b3',
+        'canvas_bg': '#f5f5f5',
+        'input_bg': '#ffffff',
+        'border': '#d0d0d0',
+        'category_bg': '#f3f4f6',
+        'hidden_group': '#e5e7eb',
+        'hidden_group_text': '#374151',
+        'star_selected': '#f59e0b',
+        'hide_selected': '#6b7280',
+        'footer_bg': '#e4e6eb',
+        'footer_text': '#65676b',
+        'queue_bg': '#ffffff',
+        'queue_highlight': '#e0e0e0',
+        'tooltip_bg': '#ffffe0',
+        'tooltip_text': '#000000',
+        'status_error': '#dc3545',
+        'status_success': '#28a745',
+        'status_processing': '#007bff',
+        'status_pending': '#666666',
+        'status_cancelled': '#999999',
+        'link_color': '#0078d4',
+        'link_hover': '#004578',
+        'scrollbar_bg': '#f0f0f0',
+        'scrollbar_fg': '#007bff',
+        'splitter_bg': '#e0e0e0',
+        'trough_bg': '#f5f5f5',
+    },
+    'dark': {
+        'background': '#1a1a1a',
+        'text': '#ffffff',
+        'button_bg': '#3a3a3a',
+        'selected_button': '#3d5a80',
+        'hover_button': '#4a6fa5',
+        'active_button': '#5c8bd6',
+        'accent': '#5c8bd6',
+        'accent_hover': '#7aa3e0',
+        'canvas_bg': '#1a1a1a',
+        'input_bg': '#2d2d2d',
+        'border': '#404040',
+        'category_bg': '#252525',
+        'hidden_group': '#2d2d2d',
+        'hidden_group_text': '#a0a0a0',
+        'star_selected': '#f59e0b',
+        'hide_selected': '#9ca3af',
+        'footer_bg': '#2d2d2d',
+        'footer_text': '#a0a0a0',
+        'queue_bg': '#2d2d2d',
+        'queue_highlight': '#3d5a80',
+        'tooltip_bg': '#3d3d3d',
+        'tooltip_text': '#ffffff',
+        'status_error': '#dc3545',
+        'status_success': '#28a745',
+        'status_processing': '#5c8bd6',
+        'status_pending': '#808080',
+        'status_cancelled': '#666666',
+        'link_color': '#5c8bd6',
+        'link_hover': '#7aa3e0',
+        'scrollbar_bg': '#2d2d2d',
+        'scrollbar_fg': '#5c8bd6',
+        'splitter_bg': '#2d2d2d',
+        'trough_bg': '#1a1a1a',
+    }
+}
+
+# Current theme tracker
+CURRENT_THEME = 'light'
+
+
+def get_theme_color(color_key, theme=None):
+    """Get a color value from the current or specified theme.
+    
+    Args:
+        color_key: The key for the color (e.g., 'background', 'text', 'accent')
+        theme: Optional theme name ('light' or 'dark'). If None, uses CURRENT_THEME.
+    
+    Returns:
+        The color value (hex string) or None if key not found.
+    """
+    target_theme = theme if theme else CURRENT_THEME
+    return THEMES.get(target_theme, THEMES['light']).get(color_key)
+
+
+def set_theme(theme_name):
+    """Set the current theme.
+    
+    Args:
+        theme_name: 'light' or 'dark'
+    """
+    global CURRENT_THEME
+    if theme_name in THEMES:
+        CURRENT_THEME = theme_name
+
+
+def get_current_theme():
+    """Get the name of the current theme.
+    
+    Returns:
+        'light' or 'dark'
+    """
+    return CURRENT_THEME
 
 # Threading Constants
 UPDATE_THREAD_INTERVAL = 50

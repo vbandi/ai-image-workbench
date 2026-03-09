@@ -6,6 +6,7 @@ Handles zoom, pan, resize operations and image display management.
 import tkinter as tk
 from typing import Optional, Tuple
 from PIL import Image, ImageTk
+from config import get_theme_color
 
 
 class ImageProcessor:
@@ -249,8 +250,15 @@ class TooltipManager:
             tooltip.wm_overrideredirect(True)
             tooltip.wm_geometry(f"+{x}+{y}")
             
-            # Create label with tooltip text
-            label = tk.Label(tooltip, text=text, background="#ffffe0", relief='solid', borderwidth=1)
+            # Create label with tooltip text using theme colors
+            label = tk.Label(
+                tooltip,
+                text=text,
+                background=get_theme_color('tooltip_bg'),
+                foreground=get_theme_color('tooltip_text'),
+                relief='solid',
+                borderwidth=1
+            )
             label.pack()
             
             # Store reference to tooltip

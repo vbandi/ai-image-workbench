@@ -19,7 +19,8 @@ from image_gen_api import generate_image, MODELS
 from config import (
     DEFAULT_MODEL, AUTO_GENERATE_MODELS, MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT,
     SPINNER_FRAMES, UPDATE_THREAD_INTERVAL, DISPLAY_QUEUE_CHECK_INTERVAL,
-    ACCENT_COLOR, BACKGROUND_COLOR, TEXT_COLOR, DEBOUNCE_DELAY_MS, StatusMessages
+    ACCENT_COLOR, BACKGROUND_COLOR, TEXT_COLOR, DEBOUNCE_DELAY_MS, StatusMessages,
+    get_theme_color, set_theme, get_current_theme
 )
 from ui_components import ModelSelectionFrame, PromptInputFrame
 from image_handler import ImageDisplayManager, TooltipManager
@@ -45,6 +46,9 @@ def _configure_logger() -> logging.Logger:
 
 LOGGER = _configure_logger()
 
+MIN_MAIN_PANE_SIZE = 220
+MIN_SIDEBAR_PANE_SIZE = 140
+
 
 def set_debug_logging(enabled: bool):
     """Toggle debug logging at runtime."""
@@ -61,6 +65,9 @@ class ImageGeneratorApp:
         """Initialize the image generator application."""
         self.root = root
         self.root.title("Image Generator")
+
+        self._pending_main_splitter_after_id: Optional[str] = None
+        self._pending_sidebar_splitter_after_id: Optional[str] = None
         
         # Set minimum window size
         self.root.minsize(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT)
@@ -73,6 +80,10 @@ class ImageGeneratorApp:
         self.settings_manager = SettingsManager()
         self._saved_window_settings = self.settings_manager.load_window_settings()
         self._saved_model_visibility = self.settings_manager.load_model_visibility_settings()
+        
+        # Load saved theme preference
+        saved_theme = self.settings_manager.load_theme()
+        set_theme(saved_theme)
         
         # Initialize managers and components
         self.generation_manager = GenerationManager()
@@ -133,13 +144,16 @@ class ImageGeneratorApp:
         self.main_frame = ttk.Frame(self.root)
         self.main_frame.grid(row=0, column=0, sticky="nsew")
         self.main_frame.grid_columnconfigure(0, weight=1)
-        self.main_frame.grid_rowconfigure(0, weight=1)
-        self.main_frame.grid_rowconfigure(1, weight=0)
-
+        self.main_frame.grid_rowconfigure(0, weight=0)  # Header
+        self.main_frame.grid_rowconfigure(1, weight=1)  # Main content
+        self.main_frame.grid_rowconfigure(2, weight=0)  # Footer
+        
+        # Create header frame with theme toggle
+        self._create_header()
 
         # Splitter allows drag-to-resize between controls and image area
         self.main_splitter = ttk.PanedWindow(self.main_frame, orient=tk.HORIZONTAL)
-        self.main_splitter.grid(row=0, column=0, sticky="nsew")
+        self.main_splitter.grid(row=1, column=0, sticky="nsew")
 
         # Left pane hosts controls with internal splitter for model/prompt separation
         self.control_frame = ttk.Frame(self.main_splitter, padding=(0, 8, 8, 8))
@@ -176,8 +190,114 @@ class ImageGeneratorApp:
         # Default splitter positions (will be overridden by saved settings if available)
         self._default_main_splitter_pos = 350
         self._default_sidebar_splitter_pos = 400
-        self.root.after(0, lambda: self.main_splitter.sashpos(0, self._default_main_splitter_pos))
-        self.root.after(0, lambda: self.sidebar_splitter.sashpos(0, self._default_sidebar_splitter_pos))
+        self._schedule_splitter_position(
+            self.main_splitter,
+            self._default_main_splitter_pos,
+            axis="x",
+            min_first=MIN_MAIN_PANE_SIZE,
+            min_second=MIN_MAIN_PANE_SIZE,
+            retry_attr="_pending_main_splitter_after_id"
+        )
+        self._schedule_splitter_position(
+            self.sidebar_splitter,
+            self._default_sidebar_splitter_pos,
+            axis="y",
+            min_first=MIN_SIDEBAR_PANE_SIZE,
+            min_second=MIN_SIDEBAR_PANE_SIZE,
+            retry_attr="_pending_sidebar_splitter_after_id"
+        )
+
+    def _set_splitter_position_safe(self, splitter, position: int, axis: str, min_first: int, min_second: int) -> bool:
+        """Apply a sash position only after the splitter has a measurable size."""
+        try:
+            splitter.update_idletasks()
+            total_size = splitter.winfo_width() if axis == "x" else splitter.winfo_height()
+            if total_size <= 1:
+                return False
+
+            min_total = min_first + min_second
+            if total_size <= min_total:
+                clamped_position = max(1, total_size // 2)
+            else:
+                clamped_position = max(min_first, min(int(position), total_size - min_second))
+
+            splitter.sashpos(0, clamped_position)
+            return True
+        except Exception as exc:
+            LOGGER.debug("Unable to apply splitter position %s: %s", position, exc)
+            return False
+
+    def _schedule_splitter_position(
+        self,
+        splitter,
+        position: int,
+        axis: str,
+        min_first: int,
+        min_second: int,
+        retry_attr: str,
+        retries: int = 10,
+        delay_ms: int = 50
+    ):
+        """Retry sash placement until the panes have non-zero size."""
+        pending_after_id = getattr(self, retry_attr, None)
+        if pending_after_id:
+            try:
+                self.root.after_cancel(pending_after_id)
+            except Exception:
+                pass
+            setattr(self, retry_attr, None)
+
+        def attempt(remaining_retries: int):
+            if self._set_splitter_position_safe(splitter, position, axis, min_first, min_second):
+                setattr(self, retry_attr, None)
+                return
+
+            if remaining_retries <= 0:
+                setattr(self, retry_attr, None)
+                return
+
+            after_id = self.root.after(delay_ms, lambda: attempt(remaining_retries - 1))
+            setattr(self, retry_attr, after_id)
+
+        attempt(retries)
+
+    def _heal_splitters(self):
+        """Clamp splitter positions if either pane has been collapsed during startup/layout."""
+        try:
+            if self.model_frame.winfo_height() <= 1 or self.prompt_frame.winfo_height() <= 1:
+                requested_sidebar_pos = self._saved_window_settings.sidebar_splitter_position
+                if requested_sidebar_pos is None:
+                    requested_sidebar_pos = self.sidebar_splitter.sashpos(0)
+                self._schedule_splitter_position(
+                    self.sidebar_splitter,
+                    requested_sidebar_pos,
+                    axis="y",
+                    min_first=MIN_SIDEBAR_PANE_SIZE,
+                    min_second=MIN_SIDEBAR_PANE_SIZE,
+                    retry_attr="_pending_sidebar_splitter_after_id",
+                    retries=2,
+                    delay_ms=20
+                )
+        except Exception:
+            pass
+
+        try:
+            if self.control_frame.winfo_width() <= 1 or self.content_frame.winfo_width() <= 1:
+                requested_main_pos = self._saved_window_settings.main_splitter_position
+                if requested_main_pos is None:
+                    requested_main_pos = self.main_splitter.sashpos(0)
+                self._schedule_splitter_position(
+                    self.main_splitter,
+                    requested_main_pos,
+                    axis="x",
+                    min_first=MIN_MAIN_PANE_SIZE,
+                    min_second=MIN_MAIN_PANE_SIZE,
+                    retry_attr="_pending_main_splitter_after_id",
+                    retries=2,
+                    delay_ms=20
+                )
+        except Exception:
+            pass
     
     def _apply_saved_window_state(self):
         """Apply saved window position, size, and splitter positions."""
@@ -221,11 +341,25 @@ class ImageGeneratorApp:
             def apply_splitter_positions():
                 try:
                     if settings.main_splitter_position is not None:
-                        self.main_splitter.sashpos(0, settings.main_splitter_position)
+                        self._schedule_splitter_position(
+                            self.main_splitter,
+                            settings.main_splitter_position,
+                            axis="x",
+                            min_first=MIN_MAIN_PANE_SIZE,
+                            min_second=MIN_MAIN_PANE_SIZE,
+                            retry_attr="_pending_main_splitter_after_id"
+                        )
                         LOGGER.debug(f"Applied main splitter position: {settings.main_splitter_position}")
                     
                     if settings.sidebar_splitter_position is not None:
-                        self.sidebar_splitter.sashpos(0, settings.sidebar_splitter_position)
+                        self._schedule_splitter_position(
+                            self.sidebar_splitter,
+                            settings.sidebar_splitter_position,
+                            axis="y",
+                            min_first=MIN_SIDEBAR_PANE_SIZE,
+                            min_second=MIN_SIDEBAR_PANE_SIZE,
+                            retry_attr="_pending_sidebar_splitter_after_id"
+                        )
                         LOGGER.debug(f"Applied sidebar splitter position: {settings.sidebar_splitter_position}")
                 except Exception as e:
                     LOGGER.warning(f"Error applying splitter positions: {e}")
@@ -287,6 +421,48 @@ class ImageGeneratorApp:
         self._save_window_state()
         self.root.destroy()
 
+    def _create_header(self):
+        """Create the header frame with title and theme toggle."""
+        self.header_frame = ttk.Frame(self.main_frame, padding=(10, 5))
+        self.header_frame.grid(row=0, column=0, sticky="ew")
+        self.header_frame.grid_columnconfigure(0, weight=1)
+        
+        # Title label
+        self.title_label = ttk.Label(
+            self.header_frame,
+            text="Image Generator",
+            font=('Segoe UI', 14, 'bold')
+        )
+        self.title_label.grid(row=0, column=0, sticky="w")
+        
+        # Theme toggle button
+        self.theme_btn = ttk.Button(
+            self.header_frame,
+            text="Dark Mode" if get_current_theme() == 'light' else "Light Mode",
+            command=self._toggle_theme,
+            style='Action.TButton'
+        )
+        self.theme_btn.grid(row=0, column=1, sticky="e", padx=(10, 0))
+
+    def _toggle_theme(self):
+        """Toggle between light and dark themes."""
+        current = get_current_theme()
+        new_theme = 'dark' if current == 'light' else 'light'
+        
+        # Update theme
+        set_theme(new_theme)
+        
+        # Save preference
+        self.settings_manager.save_theme(new_theme)
+        
+        # Update button text
+        self.theme_btn.configure(text="Light Mode" if new_theme == 'dark' else "Dark Mode")
+        
+        # Apply theme to all components
+        self.apply_theme()
+        
+        LOGGER.debug(f"Switched to {new_theme} theme")
+
     def _create_model_selection(self):
         """Create the model selection component."""
         self.model_selection = ModelSelectionFrame(
@@ -345,10 +521,10 @@ class ImageGeneratorApp:
         # Use a tk.Frame for the overlay to allow custom styling
         self.queue_overlay_frame = tk.Frame(
             self.image_frame,
-            background='#ffffff',
+            background=get_theme_color('queue_bg'),
             padx=8,
             pady=6,
-            highlightbackground='#e0e0e0',
+            highlightbackground=get_theme_color('border'),
             highlightthickness=1
         )
         # Initially hidden
@@ -427,7 +603,7 @@ class ImageGeneratorApp:
             self._overlay_rebuilding = False
         
         # --- Header Section ---
-        header_frame = tk.Frame(self.queue_overlay_frame, bg='#ffffff')
+        header_frame = tk.Frame(self.queue_overlay_frame, bg=get_theme_color('queue_bg'))
         header_frame.pack(fill='x', pady=(0, 4))
         
         # Title
@@ -438,43 +614,43 @@ class ImageGeneratorApp:
             header_frame,
             text=title_text,
             font=('Segoe UI', 9, 'bold'),
-            background='#ffffff',
-            foreground='#333333'
+            background=get_theme_color('queue_bg'),
+            foreground=get_theme_color('text')
         )
         title_label.pack(side='left')
         
         # Clear Button (only if there are items to clear)
         # Clear Buttons
-        btn_frame = tk.Frame(header_frame, bg='#ffffff')
+        btn_frame = tk.Frame(header_frame, bg=get_theme_color('queue_bg'))
         btn_frame.pack(side='right')
         
         # Navigation Buttons
-        nav_frame = tk.Frame(header_frame, bg='#ffffff')
+        nav_frame = tk.Frame(header_frame, bg=get_theme_color('queue_bg'))
         nav_frame.pack(side='right', padx=(0, 8))
 
         prev_btn = tk.Label(
             nav_frame,
             text="Prev Unseen",
             font=('Segoe UI', 8),
-            background='#ffffff',
-            foreground='#0078d4',
+            background=get_theme_color('queue_bg'),
+            foreground=get_theme_color('link_color'),
             cursor='hand2'
         )
         prev_btn.pack(side='left', padx=4)
         prev_btn.bind('<Button-1>', lambda e: self._show_prev_unseen())
-        self._add_hover_effect(prev_btn, '#0078d4', '#004578', underline=True)
+        self._add_hover_effect(prev_btn, get_theme_color('link_color'), get_theme_color('link_hover'), underline=True)
 
         next_btn = tk.Label(
             nav_frame,
             text="Next Unseen",
             font=('Segoe UI', 8),
-            background='#ffffff',
-            foreground='#0078d4',
+            background=get_theme_color('queue_bg'),
+            foreground=get_theme_color('link_color'),
             cursor='hand2'
         )
         next_btn.pack(side='left', padx=4)
         next_btn.bind('<Button-1>', lambda e: self._show_next_unseen())
-        self._add_hover_effect(next_btn, '#0078d4', '#004578', underline=True)
+        self._add_hover_effect(next_btn, get_theme_color('link_color'), get_theme_color('link_hover'), underline=True)
 
         if self.queue_overlay_expanded:
             # View toggle: thumbnails
@@ -483,10 +659,10 @@ class ImageGeneratorApp:
                 text="Thumbnails",
                 variable=self.queue_overlay_show_thumbnails,
                 command=lambda: self._update_queue_overlay(),
-                background='#ffffff',
-                activebackground='#ffffff',
-                foreground='#333333',
-                selectcolor='#ffffff',
+                background=get_theme_color('queue_bg'),
+                activebackground=get_theme_color('queue_bg'),
+                foreground=get_theme_color('text'),
+                selectcolor=get_theme_color('queue_bg'),
                 highlightthickness=0,
                 bd=0,
                 font=('Segoe UI', 8),
@@ -500,13 +676,13 @@ class ImageGeneratorApp:
                     btn_frame,
                     text="Clear All",
                     font=('Segoe UI', 8),
-                    background='#ffffff',
-                    foreground='#007bff',
+                    background=get_theme_color('queue_bg'),
+                    foreground=get_theme_color('accent'),
                     cursor='hand2'
                 )
                 clear_all_btn.pack(side='right', padx=(5, 0))
                 clear_all_btn.bind('<Button-1>', lambda e: self._clear_generations_history(all=True))
-                self._add_hover_effect(clear_all_btn, '#007bff', '#0056b3', underline=True)
+                self._add_hover_effect(clear_all_btn, get_theme_color('accent'), get_theme_color('accent_hover'), underline=True)
 
                 # Clear Seen (only if there are seen items)
                 if any(r.seen for r in relevant_items):
@@ -514,13 +690,13 @@ class ImageGeneratorApp:
                         btn_frame,
                         text="Clear Seen",
                         font=('Segoe UI', 8),
-                        background='#ffffff',
-                        foreground='#007bff',
+                        background=get_theme_color('queue_bg'),
+                        foreground=get_theme_color('accent'),
                         cursor='hand2'
                     )
                     clear_seen_btn.pack(side='right', padx=(5, 0))
                     clear_seen_btn.bind('<Button-1>', lambda e: self._clear_generations_history(all=False))
-                    self._add_hover_effect(clear_seen_btn, '#007bff', '#0056b3', underline=True)
+                    self._add_hover_effect(clear_seen_btn, get_theme_color('accent'), get_theme_color('accent_hover'), underline=True)
 
         # --- List Section (Only if Expanded) ---
         if self.queue_overlay_expanded:
@@ -547,7 +723,7 @@ class ImageGeneratorApp:
                 # Determine icon and color based on state
                 if req.status == RequestStatus.FAILED:
                     icon = "❌"
-                    fg_color = '#dc3545'  # Red
+                    fg_color = get_theme_color('status_error')
                     state_text = "Failed"
                 elif req.status == RequestStatus.COMPLETED:
                     model_is_viewed = False
@@ -563,34 +739,34 @@ class ImageGeneratorApp:
 
                     if is_viewed:
                         icon = "👁"  # Eye for viewed
-                        fg_color = '#28a745'
+                        fg_color = get_theme_color('status_success')
                         state_text = "Done (Viewed)"
                     else:
                         icon = "✓"
-                        fg_color = '#28a745'
+                        fg_color = get_theme_color('status_success')
                         state_text = "Done (New)"
                 elif req.status == RequestStatus.PROCESSING:
                     icon = "⏳"
-                    fg_color = '#007bff'  # Blue
+                    fg_color = get_theme_color('status_processing')
                     state_text = "Generating..."
                 elif req.status == RequestStatus.QUEUED:
                     icon = "🕒"
-                    fg_color = '#666666'  # Gray
+                    fg_color = get_theme_color('status_pending')
                     state_text = "Queued"
                 elif req.status == RequestStatus.CANCELLED:
                     icon = "🚫"
-                    fg_color = '#999999'
+                    fg_color = get_theme_color('status_cancelled')
                     state_text = "Cancelled"
                 else:
                     icon = "?"
-                    fg_color = 'black'
+                    fg_color = get_theme_color('text')
                     state_text = "?"
                 
                 # Label text
                 label_text = f"{icon} {display_name}"
                 
                 # Create container frame for the row (to handle tooltip/clicks better)
-                row_frame = tk.Frame(self.queue_overlay_frame, bg='white')
+                row_frame = tk.Frame(self.queue_overlay_frame, bg=get_theme_color('queue_bg'))
                 row_frame.pack(anchor='w', fill='x', pady=1)
 
                 # Optional thumbnail
@@ -606,7 +782,7 @@ class ImageGeneratorApp:
                             thumb_label = tk.Label(
                                 row_frame,
                                 image=thumb_photo,
-                                background='#ffffff',
+                                background=get_theme_color('queue_bg'),
                                 cursor='hand2' if req.result_image else 'arrow'
                             )
                             thumb_label.pack(side='left', padx=(0, 6))
@@ -614,8 +790,8 @@ class ImageGeneratorApp:
                             # Make thumbnail behave like the row label for completed items
                             if req.result_image:
                                 thumb_label.bind('<Button-1>', lambda e, rid=req.request_id: self._on_queue_model_click(rid))
-                                thumb_label.bind('<Enter>', lambda e, lbl=thumb_label: lbl.configure(background='#f0f0f0'))
-                                thumb_label.bind('<Leave>', lambda e, lbl=thumb_label: lbl.configure(background='#ffffff'))
+                                thumb_label.bind('<Enter>', lambda e, lbl=thumb_label: lbl.configure(background=get_theme_color('queue_highlight')))
+                                thumb_label.bind('<Leave>', lambda e, lbl=thumb_label: lbl.configure(background=get_theme_color('queue_bg')))
 
                             # Tooltip mirrors the text label tooltip
                             if req.status == RequestStatus.FAILED:
@@ -631,7 +807,7 @@ class ImageGeneratorApp:
                     row_frame,
                     text=label_text,
                     font=('Segoe UI', 9),
-                    background='#ffffff',
+                    background=get_theme_color('queue_bg'),
                     foreground=fg_color,
                     cursor='hand2' if req.status == RequestStatus.COMPLETED else 'arrow'
                 )
@@ -648,8 +824,8 @@ class ImageGeneratorApp:
                     # Use request_id to robustly retrieve image even if cache is cleared
                     model_label.bind('<Button-1>', lambda e, rid=req.request_id: self._on_queue_model_click(rid))
                     # Add hover effect
-                    model_label.bind('<Enter>', lambda e, lbl=model_label: lbl.configure(background='#f0f0f0'))
-                    model_label.bind('<Leave>', lambda e, lbl=model_label: lbl.configure(background='#ffffff'))
+                    model_label.bind('<Enter>', lambda e, lbl=model_label: lbl.configure(background=get_theme_color('queue_highlight')))
+                    model_label.bind('<Leave>', lambda e, lbl=model_label: lbl.configure(background=get_theme_color('queue_bg')))
                 
                 self.queue_model_labels[model] = model_label
         else:
@@ -794,7 +970,7 @@ class ImageGeneratorApp:
         """Create the status bar."""
         # Create footer frame
         self.footer_frame = ttk.Frame(self.main_frame, style='Footer.TFrame')
-        self.footer_frame.grid(row=1, column=0, sticky="ew", padx=0, pady=0)
+        self.footer_frame.grid(row=2, column=0, sticky="ew", padx=0, pady=0)
         self.footer_frame.grid_columnconfigure(0, weight=1)
         
         # Create status label
@@ -814,13 +990,76 @@ class ImageGeneratorApp:
         # Set base font for all ttk widgets
         style.configure('.', font=('Segoe UI', 10))
         
-        # Set default background for frames and labels
-        style.configure('TFrame', background=BACKGROUND_COLOR)
-        style.configure('TLabel', background=BACKGROUND_COLOR, foreground=TEXT_COLOR)
+        # Set default background for frames and labels using theme colors
+        bg_color = get_theme_color('background')
+        text_color = get_theme_color('text')
+        style.configure('TFrame', background=bg_color)
+        style.configure('TLabel', background=bg_color, foreground=text_color)
         
-        # Footer style
-        style.configure('Footer.TFrame', background='#e4e6eb')
-        style.configure('Footer.TLabel', background='#e4e6eb', foreground='#65676b')
+        # Footer style using theme colors
+        footer_bg = get_theme_color('footer_bg')
+        footer_text = get_theme_color('footer_text')
+        style.configure('Footer.TFrame', background=footer_bg)
+        style.configure('Footer.TLabel', background=footer_bg, foreground=footer_text)
+        
+        # Scrollbar theming
+        scrollbar_bg = get_theme_color('scrollbar_bg')
+        scrollbar_fg = get_theme_color('scrollbar_fg')
+        trough_bg = get_theme_color('trough_bg')
+        style.configure('Horizontal.TScrollbar', 
+                       background=scrollbar_bg, 
+                       troughcolor=trough_bg,
+                       bordercolor=trough_bg,
+                       arrowcolor=scrollbar_fg)
+        style.configure('Vertical.TScrollbar', 
+                       background=scrollbar_bg, 
+                       troughcolor=trough_bg,
+                       bordercolor=trough_bg,
+                       arrowcolor=scrollbar_fg)
+        
+        # PanedWindow (splitter) theming
+        splitter_bg = get_theme_color('splitter_bg')
+        style.configure('TPanedwindow', background=splitter_bg)
+        style.configure('Sash', background=splitter_bg)
+    
+    def apply_theme(self):
+        """Apply the current theme to all UI components."""
+        # Reconfigure styles
+        self._configure_styles()
+        
+        # Update canvas backgrounds
+        self.model_selection.canvas.configure(background=get_theme_color('canvas_bg'))
+        self.model_selection.configure_styles()
+        self.model_selection.create_model_matrix()
+        
+        # Update prompt input
+        self.prompt_input._configure_styles()
+        self.prompt_input.text_input.configure(
+            background=get_theme_color('input_bg'),
+            foreground=get_theme_color('text'),
+            insertbackground=get_theme_color('text')
+        )
+        
+        # Update queue overlay if visible
+        if self.queue_overlay_visible:
+            self.queue_overlay_frame.configure(
+                background=get_theme_color('queue_bg'),
+                highlightbackground=get_theme_color('border')
+            )
+            self._update_queue_overlay()
+        
+        # Update footer
+        self.footer_frame.configure(style='Footer.TFrame')
+        self.status_label.configure(style='Footer.TLabel')
+        
+        # Update title label
+        self.title_label.configure(
+            background=get_theme_color('background'),
+            foreground=get_theme_color('text')
+        )
+        
+        # Force update
+        self.root.update()
     
     def _setup_callbacks(self):
         """Set up callbacks for threading managers."""
@@ -988,24 +1227,28 @@ class ImageGeneratorApp:
     def _on_window_resize(self, event):
         """Handle window resize events."""
         if event.widget == self.root:
+            self._heal_splitters()
             self._schedule_image_update()
     
 
     def _on_content_frame_resize(self, event):
         """Handle content frame resize events (triggered by splitter movement)."""
         if event.widget == self.content_frame:
+            self._heal_splitters()
             self._schedule_image_update()
 
     def _on_inner_splitter_move(self, event):
         """Handle inner splitter movement to resize model/prompt areas."""
         if event.widget == self.sidebar_splitter:
             # Update the image display when the splitter moves
+            self._heal_splitters()
             self._schedule_image_update()
 
     def _on_inner_splitter_configure(self, event):
         """Handle inner splitter configuration changes."""
         if event.widget == self.sidebar_splitter:
             # Schedule image update when splitter configuration changes
+            self._heal_splitters()
             self._schedule_image_update()
 
     def _configure_inner_splitter_styling(self):

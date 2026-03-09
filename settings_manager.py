@@ -170,7 +170,65 @@ class SettingsManager:
         except Exception as e:
             LOGGER.warning(f"Error saving settings: {e}")
             return False
+
+    def load_theme(self) -> str:
+        """Load theme preference from file.
+        
+        Returns:
+            Theme name ('light' or 'dark'), or 'light' if file doesn't exist.
+        """
+        if not self.settings_file.exists():
+            LOGGER.debug("Settings file not found, using default theme (light)")
+            return 'light'
+        
+        try:
+            with open(self.settings_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            theme = data.get("theme", "light")
+            LOGGER.debug(f"Loaded theme: {theme}")
+            return theme
+            
+        except json.JSONDecodeError as e:
+            LOGGER.warning(f"Invalid settings file, using default theme: {e}")
+            return 'light'
+        except Exception as e:
+            LOGGER.warning(f"Error loading theme: {e}")
+            return 'light'
     
+    def save_theme(self, theme: str) -> bool:
+        """Save theme preference to file.
+        
+        Args:
+            theme: Theme name ('light' or 'dark').
+            
+        Returns:
+            True if save was successful, False otherwise.
+        """
+        try:
+            # Load existing settings to preserve other data
+            existing_data = {}
+            if self.settings_file.exists():
+                try:
+                    with open(self.settings_file, 'r', encoding='utf-8') as f:
+                        existing_data = json.load(f)
+                except Exception:
+                    pass
+            
+            # Update theme
+            existing_data["theme"] = theme
+            
+            # Save to file
+            with open(self.settings_file, 'w', encoding='utf-8') as f:
+                json.dump(existing_data, f, indent=2)
+            
+            LOGGER.debug(f"Saved theme: {theme}")
+            return True
+            
+        except Exception as e:
+            LOGGER.warning(f"Error saving theme: {e}")
+            return False
+
     def load_model_visibility_settings(self) -> ModelVisibilitySettings:
         """Load model visibility settings from file.
         

@@ -1166,11 +1166,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "D:\\Work\\Projects\\Playground\\python_playground\\image_generator\\ImageGenDotNet\\ImageGenDotNet.csproj",
+      "projectUniqueName": "d:\\Work\\Projects\\Playground\\python_playground\\image_generator\\ImageGenDotNet\\ImageGenDotNet.csproj",
       "projectName": "ImageGenDotNet",
-      "projectPath": "D:\\Work\\Projects\\Playground\\python_playground\\image_generator\\ImageGenDotNet\\ImageGenDotNet.csproj",
+      "projectPath": "d:\\Work\\Projects\\Playground\\python_playground\\image_generator\\ImageGenDotNet\\ImageGenDotNet.csproj",
       "packagesPath": "C:\\Users\\andra\\.nuget\\packages\\",
-      "outputPath": "D:\\Work\\Projects\\Playground\\python_playground\\image_generator\\ImageGenDotNet\\obj\\",
+      "outputPath": "d:\\Work\\Projects\\Playground\\python_playground\\image_generator\\ImageGenDotNet\\obj\\",
       "projectStyle": "PackageReference",
       "fallbackFolders": [
         "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages",
@@ -1251,7 +1251,7 @@
             "privateAssets": "none"
           }
         },
-        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.100-rc.2.25502.107/PortableRuntimeIdentifierGraph.json"
+        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.101/PortableRuntimeIdentifierGraph.json"
       }
     }
   }

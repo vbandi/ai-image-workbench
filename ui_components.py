@@ -10,7 +10,8 @@ from config import (
     MODEL_CATEGORIES, MODEL_ABBREVIATIONS, SPINNER_FRAMES,
     BACKGROUND_COLOR, SELECTED_BUTTON_COLOR, HOVER_BUTTON_COLOR,
     ACTIVE_BUTTON_COLOR, BASE_FONT, BUTTON_FONT, BUTTON_BOLD_FONT,
-    ACCENT_COLOR, ACCENT_HOVER_COLOR, TEXT_COLOR, PROMPT_FONT, HEADER_FONT
+    ACCENT_COLOR, ACCENT_HOVER_COLOR, TEXT_COLOR, PROMPT_FONT, HEADER_FONT,
+    get_theme_color, get_current_theme
 )
 
 
@@ -44,7 +45,7 @@ class ModelSelectionFrame(ttk.Frame):
         self.labelframe.grid_rowconfigure(0, weight=1)
         
         # Create canvas and scrollbar for scrolling
-        self.canvas = tk.Canvas(self.labelframe, background=BACKGROUND_COLOR, highlightthickness=0)
+        self.canvas = tk.Canvas(self.labelframe, background=get_theme_color('canvas_bg'), highlightthickness=0)
         self.scrollbar = ttk.Scrollbar(self.labelframe, orient="vertical", command=self.canvas.yview)
         self.model_matrix_frame = ttk.Frame(self.canvas)
         
@@ -106,16 +107,25 @@ class ModelSelectionFrame(ttk.Frame):
         # Set base font for all ttk widgets
         style.configure('.', font=BASE_FONT)
         
+        # Get theme colors
+        bg_color = get_theme_color('background')
+        text_color = get_theme_color('text')
+        button_bg = get_theme_color('button_bg')
+        selected_btn = get_theme_color('selected_button')
+        hover_btn = get_theme_color('hover_button')
+        active_btn = get_theme_color('active_button')
+        accent = get_theme_color('accent')
+        
         # Set default background for frames and labels
-        style.configure('TFrame', background=BACKGROUND_COLOR)
-        style.configure('TLabel', background=BACKGROUND_COLOR)
-        style.configure('TLabelframe', background=BACKGROUND_COLOR)
-        style.configure('TLabelframe.Label', background=BACKGROUND_COLOR, font=BUTTON_BOLD_FONT)
+        style.configure('TFrame', background=bg_color)
+        style.configure('TLabel', background=bg_color, foreground=text_color)
+        style.configure('TLabelframe', background=bg_color)
+        style.configure('TLabelframe.Label', background=bg_color, foreground=text_color, font=BUTTON_BOLD_FONT)
         
         # Configure selected button style
         style.configure('Model.Selected.TButton',
-                       background=SELECTED_BUTTON_COLOR,
-                       foreground=ACCENT_COLOR,
+                       background=selected_btn,
+                       foreground=accent,
                        relief='flat',
                        borderwidth=0,
                        padding=(8, 6),
@@ -123,8 +133,8 @@ class ModelSelectionFrame(ttk.Frame):
                        
         # Configure normal button style
         style.configure('Model.TButton',
-                       background='white',
-                       foreground=TEXT_COLOR,
+                       background=button_bg,
+                       foreground=text_color,
                        relief='flat',
                        borderwidth=1,
                        padding=(8, 6),
@@ -132,58 +142,60 @@ class ModelSelectionFrame(ttk.Frame):
                        
         # Configure hover effects
         style.map('Model.TButton',
-                 background=[('active', HOVER_BUTTON_COLOR), ('!active', 'white')],
+                 background=[('active', hover_btn), ('!active', button_bg)],
                  relief=[('active', 'flat')])
         style.map('Model.Selected.TButton',
-                 background=[('active', ACTIVE_BUTTON_COLOR), ('!active', SELECTED_BUTTON_COLOR)])
+                 background=[('active', active_btn), ('!active', selected_btn)])
 
         # Configure star toggle buttons
         style.configure('Star.TButton',
                 padding=(4, 2),
                 width=2,
-                background='white',
+                background=button_bg,
                 relief='flat',
                 font=BUTTON_FONT)
         style.configure('Star.Selected.TButton',
                 padding=(4, 2),
                 width=2,
-                background='white',
+                background=button_bg,
                 relief='flat',
                 font=BUTTON_BOLD_FONT,
-                foreground='#f59e0b') # Amber color for star
+                foreground=get_theme_color('star_selected'))
         style.map('Star.TButton',
-              background=[('active', HOVER_BUTTON_COLOR), ('!active', 'white')])
+              background=[('active', hover_btn), ('!active', button_bg)])
         style.map('Star.Selected.TButton',
-              background=[('active', HOVER_BUTTON_COLOR), ('!active', 'white')])
+              background=[('active', hover_btn), ('!active', button_bg)])
 
         # Configure hide toggle buttons
         style.configure('Hide.TButton',
                 padding=(4, 2),
                 width=2,
-                background='white',
+                background=button_bg,
                 relief='flat',
                 font=BUTTON_FONT)
         style.configure('Hide.Selected.TButton',
                 padding=(4, 2),
                 width=2,
-                background='white',
+                background=button_bg,
                 relief='flat',
                 font=BUTTON_BOLD_FONT,
-                foreground='#6b7280') # Gray color for hide
+                foreground=get_theme_color('hide_selected'))
         style.map('Hide.TButton',
-              background=[('active', HOVER_BUTTON_COLOR), ('!active', 'white')])
+              background=[('active', hover_btn), ('!active', button_bg)])
         style.map('Hide.Selected.TButton',
-              background=[('active', HOVER_BUTTON_COLOR), ('!active', 'white')])
+              background=[('active', hover_btn), ('!active', button_bg)])
 
         # Configure hidden group toggle button
+        hidden_bg = get_theme_color('hidden_group')
+        hidden_hover = get_theme_color('hover_button')
         style.configure('HiddenGroup.TButton',
                 padding=(8, 4),
-                background='#f3f4f6',
+                background=hidden_bg,
                 relief='flat',
                 font=BUTTON_BOLD_FONT,
-                foreground='#374151')
+                foreground=get_theme_color('hidden_group_text'))
         style.map('HiddenGroup.TButton',
-              background=[('active', '#e5e7eb'), ('!active', '#f3f4f6')])
+              background=[('active', hidden_hover), ('!active', hidden_bg)])
     
     def create_model_matrix(self):
         """Create a vertical list of model selection buttons organized by category."""
@@ -206,13 +218,11 @@ class ModelSelectionFrame(ttk.Frame):
             if not visible_models:
                 continue  # Skip empty categories
                 
-            # Create category label
+            # Create category label (uses themed style)
             category_label = ttk.Label(
                 self.model_matrix_frame,
                 text=category,
-                font=HEADER_FONT,
-                background=BACKGROUND_COLOR,
-                foreground=TEXT_COLOR
+                font=HEADER_FONT
             )
             category_label.grid(row=row, column=0, sticky="w", padx=2, pady=(12, 4))
             row += 1
@@ -238,13 +248,11 @@ class ModelSelectionFrame(ttk.Frame):
             )
             self.hidden_toggle_btn.grid(row=0, column=0, padx=(0, 4))
             
-            # Hidden group label
+            # Hidden group label (uses themed style)
             hidden_label = ttk.Label(
                 hidden_header_frame,
                 text=f"Hidden ({len(self.hidden_models)})",
-                font=HEADER_FONT,
-                background='#f3f4f6',
-                foreground='#374151'
+                font=HEADER_FONT
             )
             hidden_label.grid(row=0, column=1, sticky="w")
             
@@ -552,7 +560,7 @@ class PromptInputFrame(ttk.Frame):
         self.header_frame = ttk.Frame(self.container)
         self.header_frame.grid(row=0, column=0, sticky="ew", pady=(5, 4))
 
-        ttk.Label(self.header_frame, text="Prompt", font=HEADER_FONT, foreground=TEXT_COLOR).pack(side="left")
+        ttk.Label(self.header_frame, text="Prompt", font=HEADER_FONT).pack(side="left")
         
         # Auto-generate checkbox
 
@@ -596,8 +604,9 @@ class PromptInputFrame(ttk.Frame):
             relief='flat',
             padx=10,
             pady=10,
-            background='white',
-            foreground=TEXT_COLOR
+            background=get_theme_color('input_bg'),
+            foreground=get_theme_color('text'),
+            insertbackground=get_theme_color('text')
         )
         self.text_input.grid(row=0, column=0, sticky="nsew")
         
@@ -662,16 +671,22 @@ class PromptInputFrame(ttk.Frame):
     def _configure_styles(self):
         style = ttk.Style()
         
+        # Get theme colors
+        accent = get_theme_color('accent')
+        accent_hover = get_theme_color('accent_hover')
+        button_bg = get_theme_color('button_bg')
+        hover_btn = get_theme_color('hover_button')
+        
         # Primary CTA Button (Generate)
         style.configure('Primary.TButton',
             font=('Segoe UI', 11, 'bold'),
-            background=ACCENT_COLOR,
+            background=accent,
             foreground='white',
             padding=(10, 12),
             relief='flat'
         )
         style.map('Primary.TButton',
-            background=[('active', ACCENT_HOVER_COLOR), ('!active', ACCENT_COLOR)],
+            background=[('active', accent_hover), ('!active', accent)],
             foreground=[('!disabled', 'white')]
         )
         
@@ -680,10 +695,10 @@ class PromptInputFrame(ttk.Frame):
             font=BUTTON_FONT,
             padding=(8, 4),
             relief='flat',
-            background='white'
+            background=button_bg
         )
         style.map('Action.TButton',
-            background=[('active', HOVER_BUTTON_COLOR), ('!active', 'white')]
+            background=[('active', hover_btn), ('!active', button_bg)]
         )
 
     def _on_auto_generate_toggle(self):
