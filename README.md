@@ -1,75 +1,113 @@
 # AI Image Generator
 
-A Python desktop application for generating AI images using various models through the Fal.ai API. This application provides a user-friendly Tkinter interface for creating images from text prompts.
+A Python/Tkinter desktop application for generating images with a large set of fal.ai models. The app is designed for fast model comparison on a single prompt, with a responsive UI, cached per-model results, prompt enhancement, queue visibility, and save/copy workflows.
+
+![Application screenshot](app_screenshot.png)
 
 ## Features
 
-- **Multiple AI Models**: Support for various image generation models including Flux, Imagen, HiDream, Stable Diffusion, and more
-- **Model Memory System**: Caches generated images per model for quick comparison and re-selection
-- **Prompt Enhancement**: Uses OpenRouter with Grok to enhance user prompts for better results
-- **Threading**: Background processing to keep the UI responsive during image generation
-- **Clipboard Integration**: Easy copying of generated images to clipboard
-- **Zoom and Pan**: Interactive image viewing with zoom and pan controls
+- Support for a broad mix of fal.ai image models, including Flux, Imagen, HiDream, Ideogram, Gemini, Qwen, WAN, BRIA, Phota, and other text-to-image endpoints.
+- Model memory cache that remembers the last generated image per model for the current prompt, so switching between tried models is instant.
+- Visual model indicators for generated, viewed, starred, hidden, queued, failed, and selected states.
+- Parallel generation for starred models to compare multiple outputs from one prompt.
+- Prompt enhancement through OpenRouter using Grok 4.1 Fast, with optional user directions.
+- Auto-generate support for selected fast models while typing.
+- Responsive image viewer with zoom, pan, fit-to-window behavior, and thumbnail-aware queue interactions.
+- Save to disk and copy-to-clipboard actions for generated images.
+- Light and dark themes, persisted window layout, persisted splitter positions, and persisted hidden-model preferences.
+- Queue overlay that shows request status, lets you review completed items, and surfaces failures without blocking the main UI.
+- Background request handling so the interface stays responsive during generation.
 
-## Screenshot
+## Requirements
 
-Here's an example of the application running with a generated beautiful mountain landscape:
-
-![Mountain Landscape](mountain_landscape.png)
+- Python 3.10 or newer recommended.
+- Tkinter, which is bundled with most standard Python installers.
+- A fal.ai API key in `FAL_KEY`.
+- An OpenRouter API key in `OPENROUTER_API_KEY` if you want prompt enhancement.
 
 ## Installation
 
-1. Clone the repository:
+1. Clone the repository.
+
    ```bash
    git clone https://github.com/vbandi/image-generator-python.git
    cd image-generator-python
    ```
 
-2. Install dependencies:
+2. Create and activate a virtual environment.
+
+   Windows PowerShell:
+
+   ```powershell
+   python -m venv .venv
+   .\.venv\Scripts\Activate.ps1
+   ```
+
+   macOS/Linux:
+
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate
+   ```
+
+3. Install the runtime dependencies.
+
    ```bash
    pip install fal-client openai pillow requests
    ```
 
-3. Set up environment variables:
-   - `FAL_KEY`: Your Fal.ai API key
-   - `OPENROUTER_API_KEY`: Your OpenRouter API key (for prompt enhancement)
+4. Set the required environment variables.
 
-## Usage
+   Windows PowerShell:
 
-Run the application:
+   ```powershell
+   $env:FAL_KEY = "your-fal-key"
+   $env:OPENROUTER_API_KEY = "your-openrouter-key"
+   ```
+
+   macOS/Linux:
+
+   ```bash
+   export FAL_KEY="your-fal-key"
+   export OPENROUTER_API_KEY="your-openrouter-key"
+   ```
+
+   `OPENROUTER_API_KEY` is optional if you do not use prompt enhancement.
+
+## Running The App
+
+Start the main desktop app with:
+
 ```bash
 python ui_app_refactored.py
 ```
 
-1. Select an AI model from the dropdown
-2. Enter your image prompt
-3. Optionally enhance the prompt using AI
-4. Click "Generate" to create the image
-5. Use the controls to zoom, pan, or copy the image
+Typical workflow:
 
-## Architecture
+1. Choose a model from the left sidebar.
+2. Enter a prompt.
+3. Optionally enhance the prompt.
+4. Generate a single image or generate across starred models.
+5. Switch between cached model outputs instantly.
+6. Save or copy the current image.
 
-- `ui_app_refactored.py`: Main application entry point
-- `image_gen_api.py`: API integration for image generation
-- `ai_api.py`: OpenRouter integration for prompt enhancement
-- `image_handler.py`: Image processing utilities
-- `config.py`: Application configuration and constants
-- `threading_utils.py`: Background processing management
+## Project Structure
 
-## Models Supported
+- `ui_app_refactored.py` is the main application entry point.
+- `ui_components.py` contains the model-selection and prompt UI components.
+- `image_gen_api.py` handles fal.ai model configuration, request submission, and response parsing.
+- `ai_api.py` handles prompt enhancement via OpenRouter.
+- `image_handler.py` manages image display, zoom, and pan behavior.
+- `generation_manager.py` and `threading_utils.py` manage background execution and queue state.
+- `settings_manager.py` persists window, theme, and visibility settings.
+- `clipboard_manager.py` provides clipboard integration.
 
-- Flux models (fast generation)
-- Imagen models
-- HiDream models
-- Stable Diffusion variants
-- And many more...
+## Notes
 
-## Requirements
-
-- Python 3.8+
-- Tkinter (usually included with Python)
-- Internet connection for API calls
+- The app keeps model-memory images in RAM only. They are not persisted to disk unless you explicitly save them.
+- Clipboard support is currently optimized for Windows.
+- Local app settings are stored outside the repository in the user profile directory.
 
 ## License
 
-This project is private and proprietary.
+This project is licensed under the MIT License. See the `LICENSE` file for details.

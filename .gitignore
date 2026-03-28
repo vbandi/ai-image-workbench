@@ -3,6 +3,17 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# .NET
-ImageGenDotNet/obj/
-ImageGenDotNet/bin/
+# Virtual environments
+.venv/
+venv/
+
+# Tooling and local artifacts
+.playwright-mcp/
+network_requests.txt
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

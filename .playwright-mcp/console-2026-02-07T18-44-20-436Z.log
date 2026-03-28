@@ -1,7 +1,0 @@
-[     320ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ https://www.valdorart.hu/-:0
-[    1394ms] [WARNING] [CI] WARN Not supported site engine @ https://cdn-asset.optimonk.com/script.esm/popup-80fd41a2.js:0
-[   44614ms] [WARNING] [CI] WARN Not supported site engine @ https://cdn-asset.optimonk.com/script.esm/popup-80fd41a2.js:0
-[   57574ms] [WARNING] [CI] WARN Not supported site engine @ https://cdn-asset.optimonk.com/script.esm/popup-80fd41a2.js:0
-[   75907ms] [ERROR] Attestation check for Attribution Reporting on https://region1.google-analytics.com failed. @ https://www.valdorart.hu/bejelentkezes:0
-[   76347ms] [ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ https://www.valdorart.hu/-:0
-[   76508ms] [WARNING] [CI] WARN Not supported site engine @ https://cdn-asset.optimonk.com/script.esm/popup-80fd41a2.js:0
