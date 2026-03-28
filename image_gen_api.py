@@ -485,6 +485,20 @@ MODEL_REGISTRY: Dict[str, ModelConfig] = {
         },
         "parser": "images_array",
     },
+    
+    # Phota (Grok Imagine)
+    "fal-ai/phota": {
+        "arguments": {
+            "num_images": 1,
+            "output_format": "jpeg",
+            "resolution": "1K",
+            "aspect_ratio": "4:3",
+            "image_size": None,
+            "enable_safety_checker": None,
+            "safety_tolerance": None,
+        },
+        "parser": "images_array",
+    },
 }
 
 # Parser function mapping
@@ -546,6 +560,7 @@ MODELS = [
     "fal-ai/flux-2/turbo",
     "fal-ai/kling-image/v3/text-to-image",
     "fal-ai/bitdance",
+    "fal-ai/phota",
 ]
 
 

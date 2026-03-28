@@ -61,7 +61,8 @@ MODEL_CATEGORIES = {
         "fal-ai/longcat-image",
         "imagineart/imagineart-1.5-pro-preview/text-to-image",
         "fal-ai/kling-image/v3/text-to-image",
-        "fal-ai/bitdance"
+        "fal-ai/bitdance",
+        "fal-ai/phota"
     ]
 }
 
@@ -124,7 +125,9 @@ MODEL_ABBREVIATIONS = {
     # Kling Image models
     "Kling-Image V3 Text-To-Image": "Kling Image v3",
     # Bitdance
-    "Bitdance": "Bitdance"
+    "Bitdance": "Bitdance",
+    # Phota
+    "Phota": "Phota"
 }
 
 # UI Constants
