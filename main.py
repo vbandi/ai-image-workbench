@@ -1,6 +1,6 @@
 """
-Refactored Image Generator Application
-A modular version using separate components for different functionalities.
+AI Image Workbench
+A modular desktop application built from focused UI and service components.
 """
 
 import tkinter as tk
@@ -59,12 +59,12 @@ def set_debug_logging(enabled: bool):
 
 
 class ImageGeneratorApp:
-    """Main application class for the Image Generator."""
+    """Main application class for AI Image Workbench."""
     
     def __init__(self, root):
-        """Initialize the image generator application."""
+        """Initialize AI Image Workbench."""
         self.root = root
-        self.root.title("Image Generator")
+        self.root.title("AI Image Workbench")
 
         self._pending_main_splitter_after_id: Optional[str] = None
         self._pending_sidebar_splitter_after_id: Optional[str] = None
@@ -430,7 +430,7 @@ class ImageGeneratorApp:
         # Title label
         self.title_label = ttk.Label(
             self.header_frame,
-            text="Image Generator",
+            text="AI Image Workbench",
             font=('Segoe UI', 14, 'bold')
         )
         self.title_label.grid(row=0, column=0, sticky="w")

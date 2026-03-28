@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Test script to demonstrate the new moveable separator functionality
-in the Image Generator application.
+in the AI Image Workbench application.
 
 This script creates a simple demonstration showing how the moveable
 separator between the model selection area and prompt input area works.
@@ -15,12 +15,12 @@ import os
 # Add the parent directory to the path to import our modules
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from ui_app_refactored import ImageGeneratorApp
+from main import ImageGeneratorApp
 
 
 def main():
-    """Run the Image Generator application with the new moveable separator feature."""
-    print("Starting Image Generator with moveable separator...")
+    """Run AI Image Workbench with the new moveable separator feature."""
+    print("Starting AI Image Workbench with moveable separator...")
     print("Features:")
     print("1. Moveable separator between model selection (top) and prompt input (bottom)")
     print("2. Drag the horizontal separator line to resize the areas")

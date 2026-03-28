@@ -1,5 +1,5 @@
 """
-UI Components module for the Image Generator application.
+UI Components module for AI Image Workbench.
 Contains specialized UI components for model selection, controls, and prompt input.
 """
 

@@ -17,7 +17,7 @@ from image_gen_api import generate_image, MODELS
 class ImageGeneratorApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Image Generator")
+        self.root.title("AI Image Workbench")
         
         # Available models
         self.models = MODELS

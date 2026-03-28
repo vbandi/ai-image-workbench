@@ -3,7 +3,7 @@ Test generating (hourglass) indicator behavior.
 """
 
 import tkinter as tk
-from ui_app_refactored import ImageGeneratorApp
+from main import ImageGeneratorApp
 from PIL import Image
 
 

@@ -1,10 +1,10 @@
-# AI Coding Agent Guide for Image Generator Application
+# AI Coding Agent Guide for AI Image Workbench
 
 ## Architecture Overview
 
 This is a Python/Tkinter desktop application for AI image generation with a modular architecture. The main application coordinates between specialized modules:
 
-- `ui_app_refactored.py` - Main application class (entry point)
+- `main.py` - Main application class (entry point)
 - `config.py` - All constants, model definitions, and UI settings
 - `ui_components.py` - Specialized UI components (model selection, prompt input, controls)
 - `image_gen_api.py` - AI image generation API integration
@@ -100,4 +100,4 @@ Each model requires specific parameter handling in `image_gen_api.py`.
 
 - Manual testing via application execution
 - No automated test framework currently implemented
-- Test by running `python ui_app_refactored.py` and verifying functionality
+- Test by running `python main.py` and verifying functionality

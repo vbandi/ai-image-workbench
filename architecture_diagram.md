@@ -1,11 +1,11 @@
-# AI Image Generator Architecture
+# AI Image Workbench Architecture
 
 ## Component Overview
 
 ```mermaid
 graph TB
     subgraph "User Interface Layer"
-        UI[Main Application<br/>ui_app_refactored.py]
+        UI[Main Application<br/>main.py]
         MSF[Model Selection Frame<br/>ModelSelectionFrame]
         PIF[Prompt Input Frame<br/>PromptInputFrame]
         IDM[Image Display Manager<br/>ImageDisplayManager]
@@ -123,15 +123,15 @@ sequenceDiagram
 
 ```mermaid
 graph TD
-    ui_app_refactored --> config
-    ui_app_refactored --> ui_components
-    ui_app_refactored --> image_gen_api
-    ui_app_refactored --> ai_api
-    ui_app_refactored --> image_handler
-    ui_app_refactored --> clipboard_manager
-    ui_app_refactored --> threading_utils
-    ui_app_refactored --> generation_manager
-    ui_app_refactored --> settings_manager
+    main --> config
+    main --> ui_components
+    main --> image_gen_api
+    main --> ai_api
+    main --> image_handler
+    main --> clipboard_manager
+    main --> threading_utils
+    main --> generation_manager
+    main --> settings_manager
     
     ui_components --> config
     ui_components --> image_handler
@@ -220,7 +220,7 @@ graph LR
 
 | Component | Responsibility |
 |-----------|----------------|
-| **ui_app_refactored.py** | Main application coordinator, event handling |
+| **main.py** | Main application coordinator, event handling |
 | **config.py** | Constants, model definitions, UI settings |
 | **ui_components.py** | Specialized UI widgets (model selection, prompt input) |
 | **image_gen_api.py** | Fal.ai API integration, response parsing |

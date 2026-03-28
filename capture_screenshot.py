@@ -1,6 +1,6 @@
 import tkinter as tk
 import time
-from ui_app_refactored import ImageGeneratorApp
+from main import ImageGeneratorApp
 from PIL import ImageGrab
 import os
 

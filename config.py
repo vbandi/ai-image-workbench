@@ -1,5 +1,5 @@
 """
-Configuration module for the Image Generator application.
+Configuration module for AI Image Workbench.
 Contains constants, model definitions, and application settings.
 """
 

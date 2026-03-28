@@ -4,7 +4,7 @@ Comprehensive test for complete model memory feature including reselection.
 
 import tkinter as tk
 from PIL import Image
-from ui_app_refactored import ImageGeneratorApp
+from main import ImageGeneratorApp
 
 
 def create_test_image(color):

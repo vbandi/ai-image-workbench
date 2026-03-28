@@ -1,5 +1,5 @@
 """
-Settings Manager for the Image Generator application.
+Settings Manager for AI Image Workbench.
 Handles persistence of window state including position, size, and splitter positions.
 """
 

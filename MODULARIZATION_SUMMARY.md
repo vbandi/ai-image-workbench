@@ -1,4 +1,4 @@
-# Image Generator Application Modularization Summary
+# AI Image Workbench Modularization Summary
 
 ## Overview
 Successfully refactored the large `ui_app.py` file (865 lines) into a modular architecture with separate concerns and responsibilities.
@@ -18,7 +18,7 @@ ui_app.py (865 lines)
 
 ### After (Modular)
 ```
-ui_app_refactored.py (320 lines) - Main application coordination
+main.py (320 lines) - Main application coordination
 config.py (85 lines) - Configuration and constants
 ui_components.py (280 lines) - Reusable UI components
 image_handler.py (180 lines) - Image processing and display
@@ -85,7 +85,7 @@ threading_utils.py (130 lines) - Threading and queue management
 - `GenerationQueueManager` - Queue management
 - `SpinnerAnimator` - Progress indication
 
-### `ui_app_refactored.py` - Main Application
+### `main.py` - Main Application
 - High-level coordination between components
 - Event handling and routing
 - State management

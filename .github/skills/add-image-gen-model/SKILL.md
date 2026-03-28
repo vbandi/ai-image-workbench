@@ -1,12 +1,12 @@
 ---
 name: add-image-gen-model
-description: Add a new image generation model to the Python/Tkinter image generator app, wiring API config, UI listing, and display label.
+description: Add a new image generation model to the Python/Tkinter AI Image Workbench app, wiring API config, UI listing, and display label.
 ---
 
 # Skill: Add Image Generation Model
 
 ## Purpose
-Add a new image generation model to the Python/Tkinter image generator app, including API wiring, UI listing, and display label.
+Add a new image generation model to the Python/Tkinter AI Image Workbench app, including API wiring, UI listing, and display label.
 
 ## Applies To
 - [image_gen_api.py](image_gen_api.py)

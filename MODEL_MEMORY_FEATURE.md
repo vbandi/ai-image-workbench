@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Image Generator now includes a model memory feature that caches generated images per model and displays visual indicators (tick marks) on models that have generated images. This allows quick switching between models to compare results without regenerating images.
+AI Image Workbench now includes a model memory feature that caches generated images per model and displays visual indicators (tick marks) on models that have generated images. This allows quick switching between models to compare results without regenerating images.
 
 ## Features
 
@@ -85,7 +85,7 @@ The cache is automatically cleared in these situations:
 
 ### Key Components
 
-#### `ui_app_refactored.py`
+#### `main.py`
 - **`model_image_cache`**: Dictionary storing `{model_name: PIL.Image}` mappings
 - **`current_prompt`**: Tracks the current prompt to detect changes
 - **`_clear_model_cache()`**: Clears cache and removes all tick marks

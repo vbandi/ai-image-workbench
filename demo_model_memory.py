@@ -5,7 +5,7 @@ This creates mock generations to demonstrate the caching behavior.
 
 import tkinter as tk
 from PIL import Image, ImageDraw, ImageFont
-from ui_app_refactored import ImageGeneratorApp
+from main import ImageGeneratorApp
 import time
 
 

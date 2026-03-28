@@ -5,7 +5,7 @@ Verifies that clicking on an already-selected model triggers regeneration.
 
 import tkinter as tk
 from PIL import Image
-from ui_app_refactored import ImageGeneratorApp
+from main import ImageGeneratorApp
 
 
 def test_reselection():

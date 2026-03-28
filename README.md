@@ -1,6 +1,6 @@
-# AI Image Generator
+# AI Image Workbench
 
-A Python/Tkinter desktop application for generating images with a large set of fal.ai models. The app is designed for fast model comparison on a single prompt, with a responsive UI, cached per-model results, prompt enhancement, queue visibility, and save/copy workflows.
+A Python/Tkinter desktop application for generating images with a large set of fal.ai models. AI Image Workbench is designed for fast model comparison on a single prompt, with a responsive UI, cached per-model results, prompt enhancement, queue visibility, and save/copy workflows.
 
 ![Application screenshot](app_screenshot.png)
 
@@ -30,8 +30,8 @@ A Python/Tkinter desktop application for generating images with a large set of f
 1. Clone the repository.
 
    ```bash
-   git clone https://github.com/vbandi/image-generator-python.git
-   cd image-generator-python
+   git clone https://github.com/vbandi/ai-image-workbench.git
+   cd ai-image-workbench
    ```
 
 2. Create and activate a virtual environment.
@@ -79,7 +79,13 @@ A Python/Tkinter desktop application for generating images with a large set of f
 Start the main desktop app with:
 
 ```bash
-python ui_app_refactored.py
+python main.py
+```
+
+Or launch it as a package from the parent directory:
+
+```bash
+python -m image_generator
 ```
 
 Typical workflow:
@@ -93,7 +99,7 @@ Typical workflow:
 
 ## Project Structure
 
-- `ui_app_refactored.py` is the main application entry point.
+- `main.py` is the main application entry point.
 - `ui_components.py` contains the model-selection and prompt UI components.
 - `image_gen_api.py` handles fal.ai model configuration, request submission, and response parsing.
 - `ai_api.py` handles prompt enhancement via OpenRouter.
