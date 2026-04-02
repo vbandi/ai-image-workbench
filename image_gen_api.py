@@ -304,6 +304,15 @@ MODEL_REGISTRY: Dict[str, ModelConfig] = {
         },
         "parser": "images_array",
     },
+    "fal-ai/wan/v2.7/text-to-image": {
+        "arguments": {
+            "max_images": 1,
+            "negative_prompt": "",
+            "image_size": "landscape_4_3",
+            "enable_safety_checker": False,
+        },
+        "parser": "images_array",
+    },
     
     # Other models with images array format
     "fal-ai/nano-banana": {
@@ -540,6 +549,7 @@ MODELS = [
     "fal-ai/bytedance/seedream/v4.5/text-to-image",
     "fal-ai/wan/v2.2-5b/text-to-image",
     "wan/v2.6/text-to-image",
+    "fal-ai/wan/v2.7/text-to-image",
     "fal-ai/gemini-25-flash-image",
     "fal-ai/gemini-3-pro-image-preview",
     "fal-ai/nano-banana",
