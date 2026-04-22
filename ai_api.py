@@ -37,7 +37,7 @@ def enhance_prompt(prompt: str, directions: Optional[str] = None) -> str:
         user_message = f"Enhance the following prompt with these directions: '{directions}'\n\nPrompt: '{prompt}'"
 
     response = client.chat.completions.create(
-        model="x-ai/grok-4.1-fast",
+        model="x-ai/grok-4.20",
         messages=[
             {"role": "system", "content": system_message},
             {"role": "user", "content": user_message}
