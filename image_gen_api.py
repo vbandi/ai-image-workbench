@@ -365,6 +365,18 @@ MODEL_REGISTRY: Dict[str, ModelConfig] = {
         },
         "parser": "images_array",
     },
+    "openai/gpt-image-2": {
+        "arguments": {
+            "num_images": 1,
+            "image_size": "landscape_4_3",
+            "quality": "high",
+            "output_format": "png",
+            "sync_mode": True,
+            "enable_safety_checker": None,
+            "safety_tolerance": None,
+        },
+        "parser": "images_array",
+    },
     "xai/grok-imagine-image": {
         "arguments": {
             "num_images": 1,
@@ -560,6 +572,7 @@ MODELS = [
     "fal-ai/qwen-image-2/text-to-image",
     "fal-ai/qwen-image-2/pro/text-to-image",
     "fal-ai/glm-image",
+    "openai/gpt-image-2",
     "xai/grok-imagine-image",
     "fal-ai/hunyuan-image/v3/instruct/text-to-image",
 "bria/fibo/generate",

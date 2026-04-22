@@ -54,6 +54,7 @@ MODEL_CATEGORIES = {
         "fal-ai/qwen-image-2/text-to-image",
         "fal-ai/qwen-image-2/pro/text-to-image",
         "fal-ai/glm-image",
+        "openai/gpt-image-2",
         "xai/grok-imagine-image",
         "fal-ai/hunyuan-image/v3/instruct/text-to-image",
 "bria/fibo/generate",
@@ -122,6 +123,7 @@ MODEL_ABBREVIATIONS = {
     "Bria Fibo Generate": "BRIA Fibo",
     "Longcat-Image": "Longcat",
     "Glm-Image": "GLM Image",
+    "Openai Gpt-Image-2": "GPT Image 2",
     # ImagineArt models
     "Imagineart Imagineart 1.5 Pro Preview Text To Image": "ImagineArt 1.5 Pro",
     # Kling Image models
