@@ -25,11 +25,13 @@ class ModelSelectionFrame(ttk.Frame):
         self.on_hidden_change = on_hidden_change
         self.model_var = tk.StringVar(value=default_model)
         self.model_buttons: Dict[str, ttk.Button] = {}
+        self.model_button_containers: Dict[str, ttk.Frame] = {}
         self.star_buttons: Dict[str, ttk.Button] = {}
         self.hide_buttons: Dict[str, ttk.Button] = {}
         self.model_button_texts: Dict[str, str] = {}  # Store original button text
         self.models_with_ticks: set = set()  # Track which models have generated images
         self.models_generating: set = set()  # Track which models are currently generating (hourglass)
+        self.models_with_errors: Dict[str, str] = {}  # Track failed models and their error messages
         self.models_viewed: set = set()  # Track which models have been viewed
         self.starred_models: set = set()
         self.hidden_models: set = set()
@@ -147,6 +149,28 @@ class ModelSelectionFrame(ttk.Frame):
         style.map('Model.Selected.TButton',
                  background=[('active', active_btn), ('!active', selected_btn)])
 
+        # Expand the internal label to fill the button so hover/tooltip works on the full area
+        model_button_layout = [
+            ('Button.button', {
+                'children': [
+                    ('Button.focus', {
+                        'children': [
+                            ('Button.padding', {
+                                'children': [
+                                    ('Button.label', {'sticky': 'nswe'}),
+                                ],
+                                'sticky': 'nswe',
+                            }),
+                        ],
+                        'sticky': 'nswe',
+                    }),
+                ],
+                'sticky': 'nswe',
+            }),
+        ]
+        style.layout('Model.TButton', model_button_layout)
+        style.layout('Model.Selected.TButton', model_button_layout)
+
         # Configure star toggle buttons
         style.configure('Star.TButton',
                 padding=(4, 2),
@@ -204,6 +228,7 @@ class ModelSelectionFrame(ttk.Frame):
             widget.destroy()
         
         self.model_buttons.clear()
+        self.model_button_containers.clear()
         self.star_buttons.clear()
         self.hide_buttons.clear()
         self.model_order.clear()
@@ -265,6 +290,10 @@ class ModelSelectionFrame(ttk.Frame):
         
         # Configure column weights for responsive layout
         self.model_matrix_frame.grid_columnconfigure(0, weight=1)
+
+        for model in self.model_buttons:
+            self._update_button_text(model)
+            self._update_button_tooltip(model)
     
     def _create_model_row(self, model: str, row: int, is_hidden: bool = False) -> int:
         """Create a row for a single model with all its buttons."""
@@ -303,18 +332,20 @@ class ModelSelectionFrame(ttk.Frame):
         self.tooltip_manager.add_tooltip(hide_btn, "Hide/unhide this model")
         self.hide_buttons[model] = hide_btn
 
-        # Model selection button
+        # Model selection button in an expanding container so tooltips cover the full row area
+        btn_container = ttk.Frame(row_frame)
+        btn_container.grid(row=0, column=2, sticky="ew")
+        btn_container.grid_columnconfigure(0, weight=1)
+
         btn = ttk.Button(
-            row_frame,
+            btn_container,
             text=display_name,
             command=lambda m=model: self.select_model(m),
             style='Model.TButton'
         )
-        btn.grid(row=0, column=2, sticky="ew")
+        btn.grid(row=0, column=0, sticky="ew")
 
-        # Add tooltip with full model name
-        full_name = model.replace("fal-ai/", "").replace("/", " ").title()
-        self.tooltip_manager.add_tooltip(btn, full_name)
+        self.model_button_containers[model] = btn_container
 
         self.model_buttons[model] = btn
 
@@ -362,39 +393,53 @@ class ModelSelectionFrame(ttk.Frame):
         # Once generation completes successfully, remove hourglass and add tick
         if model in self.models_generating:
             self.models_generating.discard(model)
+        self.models_with_errors.pop(model, None)
         if model not in self.models_with_ticks:
             self.models_with_ticks.add(model)
         self._update_button_text(model)
+        self._update_button_tooltip(model)
     
     def set_model_viewed(self, model: str):
         """Mark a model as viewed (change tick to eye)."""
         if model not in self.models_viewed:
             self.models_viewed.add(model)
         self._update_button_text(model)
-
+    
     def clear_all_ticks(self):
         """Clear all tick marks and viewed status from model buttons."""
         self.models_with_ticks.clear()
         self.models_viewed.clear()
+        self.models_with_errors.clear()
         for model in self.model_buttons:
             self._update_button_text(model)
+            self._update_button_tooltip(model)
     
     def set_model_generating(self, model: str):
         """Mark a model as currently generating (show hourglass, remove tick/eye)."""
-        # When generating, ensure no tick or eye is shown for this model
+        # When generating, ensure no tick, eye, or error is shown for this model
         if model in self.models_with_ticks:
             self.models_with_ticks.discard(model)
         if model in self.models_viewed:
             self.models_viewed.discard(model)
+        self.models_with_errors.pop(model, None)
             
         self.models_generating.add(model)
         self._update_button_text(model)
+        self._update_button_tooltip(model)
     
     def clear_model_generating(self, model: str):
         """Clear generating indicator (hourglass) for a model."""
         if model in self.models_generating:
             self.models_generating.discard(model)
             self._update_button_text(model)
+    
+    def set_model_error(self, model: str, error_message: str):
+        """Mark a model as failed and show an error indicator with tooltip."""
+        if model in self.models_generating:
+            self.models_generating.discard(model)
+        self.models_with_errors[model] = error_message
+        self._update_button_text(model)
+        self._update_button_tooltip(model)
     
     def clear_all_generating(self):
         """Clear all generating indicators (hourglasses)."""
@@ -407,19 +452,33 @@ class ModelSelectionFrame(ttk.Frame):
         """Update button text to show/hide status indicators."""
         if model in self.model_buttons:
             base_text = self.model_button_texts.get(model, "")
-            # Priority: generating hourglass > viewed eye > generated tick
+            # Priority: generating hourglass > error icon > viewed eye > generated tick
             if model in self.models_generating:
-                # Hourglass to indicate in-progress
                 new_text = f"⏳ {base_text}"
+            elif model in self.models_with_errors:
+                new_text = f"❌ {base_text}"
             elif model in self.models_viewed:
-                # Eye to indicate viewed
                 new_text = f"👁 {base_text}"
             elif model in self.models_with_ticks:
-                # Add checkmark/tick
                 new_text = f"✓ {base_text}"
             else:
                 new_text = base_text
             self.model_buttons[model].configure(text=new_text)
+
+    def _update_button_tooltip(self, model: str):
+        """Update button tooltip when there is extra info to show (e.g. errors)."""
+        btn = self.model_buttons.get(model)
+        container = self.model_button_containers.get(model)
+        if not btn or not container:
+            return
+
+        tooltip_widgets = [container, btn]
+        if model in self.models_with_errors:
+            self.tooltip_manager.set_tooltip_region(
+                tooltip_widgets, self.models_with_errors[model]
+            )
+        else:
+            self.tooltip_manager.clear_tooltip_region(tooltip_widgets)
 
     def toggle_star(self, model: str):
         """Toggle the starred state for a model."""
@@ -824,37 +883,105 @@ class TooltipManager:
             widget: The tkinter widget to add tooltip to
             text: The tooltip text
         """
-        def show_tooltip(event):
-            # Calculate tooltip position
-            try:
-                x, y, _, _ = widget.bbox("insert")
-                x += widget.winfo_rootx() + 25
-                y += widget.winfo_rooty() + 25
-            except:
-                # Fallback for widgets that don't support bbox
-                x = widget.winfo_rootx() + 25
-                y = widget.winfo_rooty() + 25
-            
-            # Create tooltip window
-            tooltip = tk.Toplevel(widget)
+        self.set_tooltip(widget, text)
+
+    def set_tooltip(self, widget, text: str):
+        """Set or update tooltip text for a single widget."""
+        self.set_tooltip_region([widget], text)
+
+    def set_tooltip_region(self, widgets, text: str):
+        """Set or update tooltip text for one or more widgets treated as a hover region."""
+        if not widgets:
+            return
+
+        anchor = widgets[0]
+        anchor._tooltip_text = text
+        anchor._tooltip_widgets = widgets
+
+        if getattr(anchor, '_tooltip_bound', False):
+            return
+
+        anchor._tooltip_bound = True
+        hover_count = [0]
+        pending_hide = [None]
+
+        def cancel_pending_hide():
+            if pending_hide[0] is not None:
+                anchor.after_cancel(pending_hide[0])
+                pending_hide[0] = None
+
+        def destroy_tooltip():
+            if hasattr(anchor, 'tooltip'):
+                anchor.tooltip.destroy()
+                del anchor.tooltip
+
+        def show_tooltip():
+            tooltip_text = getattr(anchor, '_tooltip_text', '')
+            if not tooltip_text:
+                return
+
+            destroy_tooltip()
+            anchor.update_idletasks()
+
+            x = anchor.winfo_rootx() + 10
+            y = anchor.winfo_rooty() + anchor.winfo_height() + 5
+
+            tooltip = tk.Toplevel(anchor)
             tooltip.wm_overrideredirect(True)
             tooltip.wm_geometry(f"+{x}+{y}")
-            
-            # Create label with tooltip text
-            label = tk.Label(tooltip, text=text, background="#ffffe0", relief='solid', borderwidth=1)
+
+            label = tk.Label(
+                tooltip,
+                text=tooltip_text,
+                background="#ffffe0",
+                relief='solid',
+                borderwidth=1,
+                wraplength=400,
+                justify='left',
+            )
             label.pack()
-            
-            # Store reference to tooltip
-            widget.tooltip = tooltip
-        
-        def hide_tooltip(event):
-            if hasattr(widget, 'tooltip'):
-                widget.tooltip.destroy()
-                del widget.tooltip
-        
-        # Bind mouse events
-        widget.bind('<Enter>', show_tooltip)
-        widget.bind('<Leave>', hide_tooltip)
+
+            anchor.tooltip = tooltip
+
+        def try_hide():
+            pending_hide[0] = None
+            if hover_count[0] <= 0:
+                destroy_tooltip()
+
+        def on_enter(event):
+            hover_count[0] += 1
+            cancel_pending_hide()
+            show_tooltip()
+
+        def on_leave(event):
+            hover_count[0] = max(0, hover_count[0] - 1)
+            cancel_pending_hide()
+            pending_hide[0] = anchor.after(100, try_hide)
+
+        for widget in widgets:
+            widget.bind('<Enter>', on_enter, add='+')
+            widget.bind('<Leave>', on_leave, add='+')
+
+    def clear_tooltip_region(self, widgets):
+        """Remove tooltip bindings from a hover region."""
+        if not widgets:
+            return
+
+        anchor = widgets[0]
+        if hasattr(anchor, 'tooltip'):
+            anchor.tooltip.destroy()
+            del anchor.tooltip
+
+        bound_widgets = getattr(anchor, '_tooltip_widgets', widgets)
+        for widget in bound_widgets:
+            widget.unbind('<Enter>')
+            widget.unbind('<Leave>')
+
+        anchor._tooltip_bound = False
+        if hasattr(anchor, '_tooltip_text'):
+            del anchor._tooltip_text
+        if hasattr(anchor, '_tooltip_widgets'):
+            del anchor._tooltip_widgets
     
     def remove_tooltip(self, widget):
         """Remove tooltip from a widget."""
@@ -863,3 +990,6 @@ class TooltipManager:
             del widget.tooltip
         widget.unbind('<Enter>')
         widget.unbind('<Leave>')
+        widget._tooltip_bound = False
+        if hasattr(widget, '_tooltip_text'):
+            del widget._tooltip_text

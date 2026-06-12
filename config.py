@@ -24,12 +24,18 @@ MODEL_CATEGORIES = {
     "HiDream": [
         "fal-ai/hidream-i1-fast",
         "fal-ai/hidream-i1-dev",
-        "fal-ai/hidream-i1-full"
+        "fal-ai/hidream-i1-full",
+        "fal-ai/hidream-o1-image",
+        "fal-ai/hidream-o1-image/dev"
     ],
     "Imagen": [
         "fal-ai/imagen4/preview",
         "fal-ai/imagen4/preview/fast",
         "fal-ai/imagen4/preview/ultra"
+    ],
+    "Krea": [
+        "krea/v2/large/text-to-image",
+        "krea/v2/medium/text-to-image",
     ],
     "Other": [
         "fal-ai/stable-diffusion-v35-large",
@@ -38,6 +44,8 @@ MODEL_CATEGORIES = {
         "fal-ai/recraft-20b",
         "fal-ai/sana",
         "fal-ai/luma-photon",
+        "luma/agent/uni-1/v1/text-to-image",
+        "luma/agent/uni-1/v1/max",
         "fal-ai/bytedance/seedream/v3/text-to-image",
         "fal-ai/bytedance/seedream/v4/text-to-image",
         "fal-ai/bytedance/seedream/v4.5/text-to-image",
@@ -54,9 +62,9 @@ MODEL_CATEGORIES = {
         "fal-ai/qwen-image-2/text-to-image",
         "fal-ai/qwen-image-2/pro/text-to-image",
         "fal-ai/glm-image",
-        "openai/gpt-image-2",
         "xai/grok-imagine-image",
         "fal-ai/hunyuan-image/v3/instruct/text-to-image",
+        "microsoft/mai-image-2.5",
 "bria/fibo/generate",
         "fal-ai/z-image/base",
         "fal-ai/z-image/turbo",
@@ -91,11 +99,15 @@ MODEL_ABBREVIATIONS = {
     "Hidream I1 Fast": "HiDream Fast",
     "Hidream I1 Dev": "HiDream Dev",
     "Hidream I1 Full": "HiDream Full",
+    "Hidream-O1-Image": "HiDream O1",
+    "Hidream-O1-Image Dev": "HiDream O1 Dev",
     # Stable Diffusion Models
     "Stable-Diffusion-V35-Large": "SD35 Large",
     "Stable-Diffusion-V35-Medium": "SD35 Medium",
     # Other Models
     "Luma Photon": "Luma Photon",
+    "Luma Agent Uni-1 V1 Text-To-Image": "Luma Uni-1",
+    "Luma Agent Uni-1 V1 Max": "Luma Uni-1 Max",
     "Ideogram V2": "Ideogram v2",
     "Recraft 20B": "Recraft",
     "Sana": "Sana",
@@ -117,13 +129,13 @@ MODEL_ABBREVIATIONS = {
     "Z-Image Turbo": "Z-Image Turbo",
     "Xai Grok-Imagine-Image": "Grok Imagine",
     "Hunyuan-Image V3 Instruct Text-To-Image": "Hunyuan V3 Instruct",
+    "Microsoft Mai-Image 2.5": "MAI Image 2.5",
     "Qwen-Image-Max Text-To-Image": "Qwen Image Max",
     "Z-Image Base": "Z-Image Base",
 # BRIA models
     "Bria Fibo Generate": "BRIA Fibo",
     "Longcat-Image": "Longcat",
     "Glm-Image": "GLM Image",
-    "Openai Gpt-Image-2": "GPT Image 2",
     # ImagineArt models
     "Imagineart Imagineart 1.5 Pro Preview Text To Image": "ImagineArt 1.5 Pro",
     # Kling Image models
@@ -131,7 +143,10 @@ MODEL_ABBREVIATIONS = {
     # Bitdance
     "Bitdance": "Bitdance",
     # Phota
-    "Phota": "Phota"
+    "Phota": "Phota",
+    # Krea v2
+    "Krea V2 Large Text-To-Image": "Krea 2 Large",
+    "Krea V2 Medium Text-To-Image": "Krea 2 Medium",
 }
 
 # UI Constants

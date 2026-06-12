@@ -102,9 +102,6 @@ class ImageGeneratorApp:
         self.current_prompt: str = ""
         
         # Track models in queue for overlay display
-        self.models_with_errors: Dict[str, str] = {}  # model -> error message
-        # Track models in queue for overlay display
-        self.models_with_errors: Dict[str, str] = {}  # model -> error message
         self.handled_request_ids: set = set() # Track processed requests
         self.last_overlay_hash: str = "" # To prevent UI flickering
         
@@ -1460,8 +1457,6 @@ class ImageGeneratorApp:
         self.model_selection.clear_all_ticks()
         # Also clear any generating indicators
         self.model_selection.clear_all_generating()
-        # Clear queue overlay tracking
-        self.models_with_errors.clear()
         self._update_queue_overlay()
     
     def check_display_queue(self):
@@ -1537,9 +1532,8 @@ class ImageGeneratorApp:
         """Handle a failed generation request."""
         model = req.model
         error_msg = req.error_message or "Unknown Error"
-        
-        self.models_with_errors[model] = error_msg
-        self.model_selection.clear_model_generating(model)
+
+        self.model_selection.set_model_error(model, error_msg)
         self.status_label.config(text=f"Error {model}: {error_msg}")
         LOGGER.error(f"Generation failed for {model}: {error_msg}")
 

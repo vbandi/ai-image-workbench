@@ -110,6 +110,8 @@ _DEFAULT_ARGUMENTS: Dict[str, Any] = {
     "prompt": "",  # Placeholder - always replaced
     "num_images": 1,
     "enable_safety_checker": False,
+    "enable_prompt_expansion": False,
+    "expand_prompt": False,
     "image_size": "landscape_4_3",
     "sync_mode": True,
     "safety_tolerance": 5,
@@ -186,7 +188,6 @@ MODEL_REGISTRY: Dict[str, ModelConfig] = {
     "fal-ai/flux-2-flex": {
         "arguments": {
             "image_size": "landscape_4_3",
-            "enable_prompt_expansion": True,
             "safety_tolerance": "5",
             "enable_safety_checker": False,
             "output_format": "jpeg",
@@ -221,7 +222,6 @@ MODEL_REGISTRY: Dict[str, ModelConfig] = {
             "enable_safety_checker": False,
             "output_format": "jpeg",
             "guidance_scale": 2.5,
-            "enable_prompt_expansion": True,
         },
         "parser": "images_array",
     },
@@ -288,7 +288,6 @@ MODEL_REGISTRY: Dict[str, ModelConfig] = {
         "arguments": {
             "num_inference_steps": 40,
             "enable_safety_checker": False,
-            "enable_prompt_expansion": False,
             "guidance_scale": 3.5,
             "shift": 2,
             "image_size": "landscape_4_3",
@@ -331,7 +330,7 @@ MODEL_REGISTRY: Dict[str, ModelConfig] = {
             "output_format": "png",
             "safety_tolerance": "4",
             "image_size": None,
-            "enable_safety_checker": None,
+            "enable_safety_checker": False,
         },
         "parser": "images_array",
     },
@@ -365,18 +364,6 @@ MODEL_REGISTRY: Dict[str, ModelConfig] = {
         },
         "parser": "images_array",
     },
-    "openai/gpt-image-2": {
-        "arguments": {
-            "num_images": 1,
-            "image_size": "landscape_4_3",
-            "quality": "high",
-            "output_format": "png",
-            "sync_mode": True,
-            "enable_safety_checker": None,
-            "safety_tolerance": None,
-        },
-        "parser": "images_array",
-    },
     "xai/grok-imagine-image": {
         "arguments": {
             "num_images": 1,
@@ -398,12 +385,21 @@ MODEL_REGISTRY: Dict[str, ModelConfig] = {
         },
         "parser": "images_array",
     },
+    "microsoft/mai-image-2.5": {
+        "arguments": {
+            "num_images": 1,
+            "aspect_ratio": "auto",
+            "output_format": "png",
+            "enable_safety_checker": False,
+            "sync_mode": True,
+        },
+        "parser": "images_array",
+    },
     "fal-ai/qwen-image-max/text-to-image": {
         "arguments": {
             "num_images": 1,
             "image_size": "landscape_4_3",
             "enable_safety_checker": False,
-            "enable_prompt_expansion": True,
             "output_format": "png",
             "sync_mode": True,
         },
@@ -414,7 +410,6 @@ MODEL_REGISTRY: Dict[str, ModelConfig] = {
             "num_images": 1,
             "image_size": "landscape_4_3",
             "enable_safety_checker": False,
-            "enable_prompt_expansion": True,
             "output_format": "png",
             "sync_mode": True,
             "safety_tolerance": None,
@@ -426,7 +421,6 @@ MODEL_REGISTRY: Dict[str, ModelConfig] = {
             "num_images": 1,
             "image_size": "landscape_4_3",
             "enable_safety_checker": False,
-            "enable_prompt_expansion": True,
             "output_format": "png",
             "sync_mode": True,
             "safety_tolerance": None,
@@ -469,7 +463,7 @@ MODEL_REGISTRY: Dict[str, ModelConfig] = {
         "arguments": {
             "image_size": None,
             "num_images": None,
-            "enable_safety_checker": None,
+            "enable_safety_checker": False,
             "safety_tolerance": None,
         },
         "parser": "images_array",
@@ -491,7 +485,6 @@ MODEL_REGISTRY: Dict[str, ModelConfig] = {
             "num_images": 1,
             "enable_safety_checker": False,
             "output_format": "jpeg",
-            "enable_prompt_expansion": True,
         },
         "parser": "images_array",
     },
@@ -515,8 +508,80 @@ MODEL_REGISTRY: Dict[str, ModelConfig] = {
             "resolution": "1K",
             "aspect_ratio": "4:3",
             "image_size": None,
-            "enable_safety_checker": None,
+            "enable_safety_checker": False,
             "safety_tolerance": None,
+        },
+        "parser": "images_array",
+    },
+
+    # HiDream O1
+    "fal-ai/hidream-o1-image": {
+        "arguments": {
+            "num_images": 1,
+            "image_size": "landscape_4_3",
+            "enable_safety_checker": False,
+        },
+        "parser": "images_array",
+    },
+    "fal-ai/hidream-o1-image/dev": {
+        "arguments": {
+            "num_images": 1,
+            "image_size": "landscape_4_3",
+            "enable_safety_checker": False,
+        },
+        "parser": "images_array",
+    },
+
+    # Luma Uni-1
+    "luma/agent/uni-1/v1/text-to-image": {
+        "arguments": {
+            "aspect_ratio": "3:2",
+            "style": "auto",
+            "output_format": "jpeg",
+            "num_images": None,
+            "enable_safety_checker": False,
+            "image_size": None,
+            "sync_mode": None,
+            "safety_tolerance": None,
+        },
+        "parser": "images_array",
+    },
+    "luma/agent/uni-1/v1/max": {
+        "arguments": {
+            "aspect_ratio": "3:2",
+            "style": "auto",
+            "output_format": "jpeg",
+            "num_images": None,
+            "enable_safety_checker": False,
+            "image_size": None,
+            "sync_mode": None,
+            "safety_tolerance": None,
+        },
+        "parser": "images_array",
+    },
+
+    # Krea v2
+    "krea/v2/large/text-to-image": {
+        "arguments": {
+            "aspect_ratio": "4:3",
+            "creativity": "medium",
+            "num_images": None,
+            "enable_safety_checker": False,
+            "image_size": None,
+            "sync_mode": None,
+            "safety_tolerance": 5,
+        },
+        "parser": "images_array",
+    },
+    "krea/v2/medium/text-to-image": {
+        "arguments": {
+            "aspect_ratio": "4:3",
+            "creativity": "medium",
+            "num_images": None,
+            "enable_safety_checker": False,
+            "image_size": None,
+            "sync_mode": None,
+            "safety_tolerance": 5,
         },
         "parser": "images_array",
     },
@@ -550,9 +615,13 @@ MODELS = [
     "fal-ai/hidream-i1-fast",
     "fal-ai/hidream-i1-dev",
     "fal-ai/hidream-i1-full",
+    "fal-ai/hidream-o1-image",
+    "fal-ai/hidream-o1-image/dev",
     "fal-ai/stable-diffusion-v35-large",
     "fal-ai/stable-diffusion-v35-medium",
     "fal-ai/luma-photon",
+    "luma/agent/uni-1/v1/text-to-image",
+    "luma/agent/uni-1/v1/max",
     "fal-ai/ideogram/v2",
     "fal-ai/recraft-20b",
     "fal-ai/sana",
@@ -572,9 +641,9 @@ MODELS = [
     "fal-ai/qwen-image-2/text-to-image",
     "fal-ai/qwen-image-2/pro/text-to-image",
     "fal-ai/glm-image",
-    "openai/gpt-image-2",
     "xai/grok-imagine-image",
     "fal-ai/hunyuan-image/v3/instruct/text-to-image",
+    "microsoft/mai-image-2.5",
 "bria/fibo/generate",
     "fal-ai/z-image/base",
     "fal-ai/z-image/turbo",
@@ -584,6 +653,8 @@ MODELS = [
     "fal-ai/kling-image/v3/text-to-image",
     "fal-ai/bitdance",
     "fal-ai/phota",
+    "krea/v2/large/text-to-image",
+    "krea/v2/medium/text-to-image",
 ]
 
 
