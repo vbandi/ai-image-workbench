@@ -226,57 +226,114 @@ class ImageDisplayManager:
 
 class TooltipManager:
     """Manages tooltip functionality for UI elements."""
-    
+
     def __init__(self):
         """Initialize the tooltip manager."""
         self.active_tooltips = {}
-    
+
     def add_tooltip(self, widget, text: str):
-        """
-        Add a tooltip to a widget.
-        
-        Args:
-            widget: The tkinter widget to add tooltip to
-            text: The tooltip text
-        """
-        def show_tooltip(event):
-            # Calculate tooltip position
-            x, y, _, _ = widget.bbox("insert")
-            x += widget.winfo_rootx() + 25
-            y += widget.winfo_rooty() + 25
-            
-            # Create tooltip window
-            tooltip = tk.Toplevel(widget)
+        """Add a tooltip to a widget."""
+        self.set_tooltip_region([widget], text)
+
+    def set_tooltip(self, widget, text: str):
+        """Set or update tooltip text for a single widget."""
+        self.set_tooltip_region([widget], text)
+
+    def set_tooltip_region(self, widgets, text: str):
+        """Set tooltip for one or more widgets treated as a single hover region."""
+        if not widgets:
+            return
+
+        anchor = widgets[0]
+        anchor._tooltip_text = text
+        anchor._tooltip_widgets = widgets
+
+        if getattr(anchor, '_tooltip_bound', False):
+            return
+
+        anchor._tooltip_bound = True
+        hover_count = [0]
+        pending_hide = [None]
+
+        def cancel_pending_hide():
+            if pending_hide[0] is not None:
+                anchor.after_cancel(pending_hide[0])
+                pending_hide[0] = None
+
+        def destroy_tooltip():
+            if hasattr(anchor, 'tooltip'):
+                anchor.tooltip.destroy()
+                del anchor.tooltip
+
+        def show_tooltip():
+            tooltip_text = getattr(anchor, '_tooltip_text', '')
+            if not tooltip_text:
+                return
+
+            destroy_tooltip()
+            anchor.update_idletasks()
+
+            x = anchor.winfo_rootx() + 10
+            y = anchor.winfo_rooty() + anchor.winfo_height() + 5
+
+            tooltip = tk.Toplevel(anchor)
             tooltip.wm_overrideredirect(True)
             tooltip.wm_geometry(f"+{x}+{y}")
-            
-            # Create label with tooltip text using theme colors
+
             label = tk.Label(
                 tooltip,
-                text=text,
+                text=tooltip_text,
                 background=get_theme_color('tooltip_bg'),
                 foreground=get_theme_color('tooltip_text'),
                 relief='solid',
-                borderwidth=1
+                borderwidth=1,
+                wraplength=360,
+                justify='left',
             )
             label.pack()
-            
-            # Store reference to tooltip
-            widget.tooltip = tooltip
-        
-        def hide_tooltip(event):
-            if hasattr(widget, 'tooltip'):
-                widget.tooltip.destroy()
-                del widget.tooltip
-        
-        # Bind mouse events
-        widget.bind('<Enter>', show_tooltip)
-        widget.bind('<Leave>', hide_tooltip)
-    
+
+            anchor.tooltip = tooltip
+
+        def try_hide():
+            pending_hide[0] = None
+            if hover_count[0] <= 0:
+                destroy_tooltip()
+
+        def on_enter(_event):
+            hover_count[0] += 1
+            cancel_pending_hide()
+            show_tooltip()
+
+        def on_leave(_event):
+            hover_count[0] = max(0, hover_count[0] - 1)
+            cancel_pending_hide()
+            pending_hide[0] = anchor.after(100, try_hide)
+
+        for widget in widgets:
+            widget.bind('<Enter>', on_enter, add='+')
+            widget.bind('<Leave>', on_leave, add='+')
+
+    def clear_tooltip_region(self, widgets):
+        """Remove tooltip bindings from a hover region."""
+        if not widgets:
+            return
+
+        anchor = widgets[0]
+        if hasattr(anchor, 'tooltip'):
+            anchor.tooltip.destroy()
+            del anchor.tooltip
+
+        bound_widgets = getattr(anchor, '_tooltip_widgets', widgets)
+        for widget in bound_widgets:
+            widget.unbind('<Enter>')
+            widget.unbind('<Leave>')
+
+        anchor._tooltip_bound = False
+        if hasattr(anchor, '_tooltip_text'):
+            del anchor._tooltip_text
+        if hasattr(anchor, '_tooltip_widgets'):
+            del anchor._tooltip_widgets
+
     def remove_tooltip(self, widget):
         """Remove tooltip from a widget."""
-        if hasattr(widget, 'tooltip'):
-            widget.tooltip.destroy()
-            del widget.tooltip
-        widget.unbind('<Enter>')
-        widget.unbind('<Leave>')
+        self.clear_tooltip_region([widget])

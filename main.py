@@ -22,7 +22,7 @@ from config import (
     ACCENT_COLOR, BACKGROUND_COLOR, TEXT_COLOR, DEBOUNCE_DELAY_MS, StatusMessages,
     get_theme_color, set_theme, get_current_theme
 )
-from ui_components import ModelSelectionFrame, PromptInputFrame
+from ui_components import ModelSelectionFrame, PromptInputFrame, GenerationFilmstrip
 from image_handler import ImageDisplayManager, TooltipManager
 from clipboard_manager import ClipboardManager
 from threading_utils import UpdateThreadManager, SpinnerAnimator
@@ -101,9 +101,8 @@ class ImageGeneratorApp:
         self.model_image_cache: Dict[str, Image.Image] = {}
         self.current_prompt: str = ""
         
-        # Track models in queue for overlay display
+        # Track models in queue for filmstrip display
         self.handled_request_ids: set = set() # Track processed requests
-        self.last_overlay_hash: str = "" # To prevent UI flickering
         
         # Debounce timer for auto-generation
         self.debounce_timer: Optional[str] = None
@@ -176,6 +175,7 @@ class ImageGeneratorApp:
         self.content_frame = ttk.Frame(self.main_splitter, padding=(8, 8, 0, 8))
         self.content_frame.grid_columnconfigure(0, weight=1)
         self.content_frame.grid_rowconfigure(0, weight=1)
+        self.content_frame.grid_rowconfigure(1, weight=0)
 
 
 
@@ -499,9 +499,9 @@ class ImageGeneratorApp:
         # Create label for image display
         self.image_label = ttk.Label(self.image_frame)
         self.image_label.grid(row=0, column=0, sticky="nsew")
-        
-        # Create queue overlay frame (top-right corner)
-        self._create_queue_overlay()
+
+        # Generation filmstrip at the bottom of the content area
+        self._create_generation_filmstrip()
         
         # Initialize image display manager
         self.image_display_manager = ImageDisplayManager(self._schedule_image_update)
@@ -513,387 +513,26 @@ class ImageGeneratorApp:
         self.image_label.bind("<ButtonPress-1>", self._on_pan_start)
         self.image_label.bind("<B1-Motion>", self._on_pan_motion)
     
-    def _create_queue_overlay(self):
-        """Create the overlay frame for showing queued model generations."""
-        # Use a tk.Frame for the overlay to allow custom styling
-        self.queue_overlay_frame = tk.Frame(
-            self.image_frame,
-            background=get_theme_color('queue_bg'),
-            padx=8,
-            pady=6,
-            highlightbackground=get_theme_color('border'),
-            highlightthickness=1
+    def _create_generation_filmstrip(self):
+        """Create the bottom filmstrip for generation queue and history."""
+        self.generation_filmstrip = GenerationFilmstrip(
+            self.content_frame,
+            self.tooltip_manager,
+            on_item_click=self._on_queue_model_click,
+            on_prev_unseen=self._show_prev_unseen,
+            on_next_unseen=self._show_next_unseen,
+            on_clear_all=lambda: self._clear_generations_history(all=True),
+            on_clear_seen=lambda: self._clear_generations_history(all=False),
+            on_clear_failed=self._clear_failed_generations,
         )
-        # Initially hidden
-        self.queue_overlay_visible = False
-        self.queue_overlay_expanded = False # Track expanded state
-        self.queue_model_labels: Dict[str, tk.Label] = {}
+        self.generation_filmstrip.grid(row=1, column=0, sticky="ew", pady=(6, 0))
+        self._update_generation_filmstrip()
 
-        # Overlay view options/state
-        self.queue_overlay_show_thumbnails = tk.BooleanVar(value=False)
-        self.queue_thumbnail_images: Dict[str, ImageTk.PhotoImage] = {}
-
-        # Debounced collapse to prevent disappearing during redraws
-        self._overlay_collapse_after_id: Optional[str] = None
-        self._overlay_rebuilding: bool = False
-        
-        # Bind hover events for auto-expand
-        self.queue_overlay_frame.bind('<Enter>', self._on_overlay_hover_enter)
-        self.queue_overlay_frame.bind('<Leave>', self._on_overlay_hover_leave)
-    
-    def _update_queue_overlay(self, active_requests=None):
-        """Update the queue overlay with current model states."""
-        # Import here to avoid circular import issues
-        from config import MODEL_ABBREVIATIONS
-        
-        # Get requests if not provided
+    def _update_generation_filmstrip(self, active_requests=None):
+        """Update the bottom generation filmstrip with current request states."""
         if active_requests is None:
             active_requests = self.generation_manager.get_all_requests()
-            
-        # We now want to show ALL requests in the "History" / "Generations" view
-        # so we don't filter out finished ones.
-        # so we don't filter out finished ones.
-        relevant_items = active_requests # All tracked requests
-        
-        show_thumbnails = bool(self.queue_overlay_show_thumbnails.get())
-
-        # Calculate state hash to prevent flashing (only redraw if changed)
-        # Hash comprises: count + expanded_state + thumbnails + model status sets + for each item: id, status, seen
-        current_hash_parts = [str(len(relevant_items)), str(self.queue_overlay_expanded), str(show_thumbnails)]
-
-        # Include model list status so overlay stays in sync even when only tick/eye state changes
-        try:
-            viewed_models = sorted(getattr(self.model_selection, "models_viewed", set()))
-            ticked_models = sorted(getattr(self.model_selection, "models_with_ticks", set()))
-        except Exception:
-            viewed_models = []
-            ticked_models = []
-        current_hash_parts.append("viewed:" + ",".join(viewed_models))
-        current_hash_parts.append("ticked:" + ",".join(ticked_models))
-        # Sort for stable hash
-        sorted_for_hash = sorted(relevant_items, key=lambda r: r.request_id)
-        for r in sorted_for_hash:
-            current_hash_parts.append(f"{r.request_id}:{r.status.name}:{r.seen}")
-        
-        current_hash = "|".join(current_hash_parts)
-        
-        # If hash matches, nothing changed fundamentally in the list structure/status
-        # (Assuming we don't need to animate progress bars here, just status icons)
-        if current_hash == self.last_overlay_hash and self.queue_overlay_visible:
-            return
-            
-        self.last_overlay_hash = current_hash
-        
-        # Always show the overlay
-        if not self.queue_overlay_visible:
-            self.queue_overlay_frame.place(relx=1.0, rely=0.0, anchor='ne', x=-10, y=10)
-            self.queue_overlay_visible = True
-            
-        # Clear existing labels
-        self._overlay_rebuilding = True
-        try:
-            for widget in self.queue_overlay_frame.winfo_children():
-                widget.destroy()
-            self.queue_model_labels.clear()
-            self.queue_thumbnail_images.clear()
-        finally:
-            self._overlay_rebuilding = False
-        
-        # --- Header Section ---
-        header_frame = tk.Frame(self.queue_overlay_frame, bg=get_theme_color('queue_bg'))
-        header_frame.pack(fill='x', pady=(0, 4))
-        
-        # Title
-        # Count pending items (QUEUED or PROCESSING)
-        pending_count = sum(1 for r in relevant_items if r.status in (RequestStatus.QUEUED, RequestStatus.PROCESSING))
-        title_text = f"Generations ({pending_count})" if pending_count > 0 else "Generations"
-        title_label = tk.Label(
-            header_frame,
-            text=title_text,
-            font=('Segoe UI', 9, 'bold'),
-            background=get_theme_color('queue_bg'),
-            foreground=get_theme_color('text')
-        )
-        title_label.pack(side='left')
-        
-        # Clear Button (only if there are items to clear)
-        # Clear Buttons
-        btn_frame = tk.Frame(header_frame, bg=get_theme_color('queue_bg'))
-        btn_frame.pack(side='right')
-        
-        # Navigation Buttons
-        nav_frame = tk.Frame(header_frame, bg=get_theme_color('queue_bg'))
-        nav_frame.pack(side='right', padx=(0, 8))
-
-        prev_btn = tk.Label(
-            nav_frame,
-            text="Prev Unseen",
-            font=('Segoe UI', 8),
-            background=get_theme_color('queue_bg'),
-            foreground=get_theme_color('link_color'),
-            cursor='hand2'
-        )
-        prev_btn.pack(side='left', padx=4)
-        prev_btn.bind('<Button-1>', lambda e: self._show_prev_unseen())
-        self._add_hover_effect(prev_btn, get_theme_color('link_color'), get_theme_color('link_hover'), underline=True)
-
-        next_btn = tk.Label(
-            nav_frame,
-            text="Next Unseen",
-            font=('Segoe UI', 8),
-            background=get_theme_color('queue_bg'),
-            foreground=get_theme_color('link_color'),
-            cursor='hand2'
-        )
-        next_btn.pack(side='left', padx=4)
-        next_btn.bind('<Button-1>', lambda e: self._show_next_unseen())
-        self._add_hover_effect(next_btn, get_theme_color('link_color'), get_theme_color('link_hover'), underline=True)
-
-        if self.queue_overlay_expanded:
-            # View toggle: thumbnails
-            thumbs_cb = tk.Checkbutton(
-                btn_frame,
-                text="Thumbnails",
-                variable=self.queue_overlay_show_thumbnails,
-                command=lambda: self._update_queue_overlay(),
-                background=get_theme_color('queue_bg'),
-                activebackground=get_theme_color('queue_bg'),
-                foreground=get_theme_color('text'),
-                selectcolor=get_theme_color('queue_bg'),
-                highlightthickness=0,
-                bd=0,
-                font=('Segoe UI', 8),
-                cursor='hand2'
-            )
-            thumbs_cb.pack(side='right', padx=(8, 0))
-
-            if any(r.status in (RequestStatus.COMPLETED, RequestStatus.FAILED, RequestStatus.CANCELLED) for r in relevant_items):
-                # Clear All
-                clear_all_btn = tk.Label(
-                    btn_frame,
-                    text="Clear All",
-                    font=('Segoe UI', 8),
-                    background=get_theme_color('queue_bg'),
-                    foreground=get_theme_color('accent'),
-                    cursor='hand2'
-                )
-                clear_all_btn.pack(side='right', padx=(5, 0))
-                clear_all_btn.bind('<Button-1>', lambda e: self._clear_generations_history(all=True))
-                self._add_hover_effect(clear_all_btn, get_theme_color('accent'), get_theme_color('accent_hover'), underline=True)
-
-                # Clear Seen (only if there are seen items)
-                if any(r.seen for r in relevant_items):
-                    clear_seen_btn = tk.Label(
-                        btn_frame,
-                        text="Clear Seen",
-                        font=('Segoe UI', 8),
-                        background=get_theme_color('queue_bg'),
-                        foreground=get_theme_color('accent'),
-                        cursor='hand2'
-                    )
-                    clear_seen_btn.pack(side='right', padx=(5, 0))
-                    clear_seen_btn.bind('<Button-1>', lambda e: self._clear_generations_history(all=False))
-                    self._add_hover_effect(clear_seen_btn, get_theme_color('accent'), get_theme_color('accent_hover'), underline=True)
-
-        # --- List Section (Only if Expanded) ---
-        if self.queue_overlay_expanded:
-            # Sort items: Newest first (by created_at)
-            sorted_items = sorted(relevant_items, key=lambda r: r.created_at, reverse=True)
-
-            # For syncing model-level viewed state to the latest completed request
-            latest_completed_request_id_by_model: Dict[str, str] = {}
-            for r in sorted_items:
-                if r.status == RequestStatus.COMPLETED:
-                    if r.model not in latest_completed_request_id_by_model:
-                        latest_completed_request_id_by_model[r.model] = r.request_id
-            
-            # Limit the display if too many items (scrolling would be better, but for now cap it)
-            display_items = sorted_items[:15] # Show latest 15
-            
-            # Create label for each request
-            for req in display_items:
-                model = req.model
-                # Get display name
-                display_name = model.replace("fal-ai/", "").replace("/", " ").title()
-                display_name = MODEL_ABBREVIATIONS.get(display_name, display_name)
-                
-                # Determine icon and color based on state
-                if req.status == RequestStatus.FAILED:
-                    icon = "❌"
-                    fg_color = get_theme_color('status_error')
-                    state_text = "Failed"
-                elif req.status == RequestStatus.COMPLETED:
-                    model_is_viewed = False
-                    try:
-                        model_is_viewed = model in getattr(self.model_selection, "models_viewed", set())
-                    except Exception:
-                        model_is_viewed = False
-
-                    is_latest_completed_for_model = (
-                        latest_completed_request_id_by_model.get(model) == req.request_id
-                    )
-                    is_viewed = bool(req.seen) or (model_is_viewed and is_latest_completed_for_model)
-
-                    if is_viewed:
-                        icon = "👁"  # Eye for viewed
-                        fg_color = get_theme_color('status_success')
-                        state_text = "Done (Viewed)"
-                    else:
-                        icon = "✓"
-                        fg_color = get_theme_color('status_success')
-                        state_text = "Done (New)"
-                elif req.status == RequestStatus.PROCESSING:
-                    icon = "⏳"
-                    fg_color = get_theme_color('status_processing')
-                    state_text = "Generating..."
-                elif req.status == RequestStatus.QUEUED:
-                    icon = "🕒"
-                    fg_color = get_theme_color('status_pending')
-                    state_text = "Queued"
-                elif req.status == RequestStatus.CANCELLED:
-                    icon = "🚫"
-                    fg_color = get_theme_color('status_cancelled')
-                    state_text = "Cancelled"
-                else:
-                    icon = "?"
-                    fg_color = get_theme_color('text')
-                    state_text = "?"
-                
-                # Label text
-                label_text = f"{icon} {display_name}"
-                
-                # Create container frame for the row (to handle tooltip/clicks better)
-                row_frame = tk.Frame(self.queue_overlay_frame, bg=get_theme_color('queue_bg'))
-                row_frame.pack(anchor='w', fill='x', pady=1)
-
-                # Optional thumbnail
-                if show_thumbnails and req.status == RequestStatus.COMPLETED:
-                    thumb_source = req.result_image or self.model_image_cache.get(model)
-                    if thumb_source:
-                        try:
-                            thumb_img = thumb_source.copy()
-                            # Larger thumbnails for readability in the Generations view
-                            thumb_img.thumbnail((64, 64), Image.LANCZOS)
-                            thumb_photo = ImageTk.PhotoImage(thumb_img)
-                            self.queue_thumbnail_images[req.request_id] = thumb_photo
-                            thumb_label = tk.Label(
-                                row_frame,
-                                image=thumb_photo,
-                                background=get_theme_color('queue_bg'),
-                                cursor='hand2' if req.result_image else 'arrow'
-                            )
-                            thumb_label.pack(side='left', padx=(0, 6))
-
-                            # Make thumbnail behave like the row label for completed items
-                            if req.result_image:
-                                thumb_label.bind('<Button-1>', lambda e, rid=req.request_id: self._on_queue_model_click(rid))
-                                thumb_label.bind('<Enter>', lambda e, lbl=thumb_label: lbl.configure(background=get_theme_color('queue_highlight')))
-                                thumb_label.bind('<Leave>', lambda e, lbl=thumb_label: lbl.configure(background=get_theme_color('queue_bg')))
-
-                            # Tooltip mirrors the text label tooltip
-                            if req.status == RequestStatus.FAILED:
-                                self.tooltip_manager.add_tooltip(thumb_label, f"Error: {req.error_message}")
-                            else:
-                                self.tooltip_manager.add_tooltip(thumb_label, f"Status: {state_text}")
-                        except Exception:
-                            # Best-effort: if thumbnail creation fails, just skip
-                            pass
-                
-                # Create clickable label
-                model_label = tk.Label(
-                    row_frame,
-                    text=label_text,
-                    font=('Segoe UI', 9),
-                    background=get_theme_color('queue_bg'),
-                    foreground=fg_color,
-                    cursor='hand2' if req.status == RequestStatus.COMPLETED else 'arrow'
-                )
-                model_label.pack(side='left')
-                
-                # Add tooltip for error messages or status
-                if req.status == RequestStatus.FAILED:
-                    self.tooltip_manager.add_tooltip(model_label, f"Error: {req.error_message}")
-                else:
-                    self.tooltip_manager.add_tooltip(model_label, f"Status: {state_text}")
-                
-                # Bind click handler if image is available
-                if req.status == RequestStatus.COMPLETED and req.result_image:
-                    # Use request_id to robustly retrieve image even if cache is cleared
-                    model_label.bind('<Button-1>', lambda e, rid=req.request_id: self._on_queue_model_click(rid))
-                    # Add hover effect
-                    model_label.bind('<Enter>', lambda e, lbl=model_label: lbl.configure(background=get_theme_color('queue_highlight')))
-                    model_label.bind('<Leave>', lambda e, lbl=model_label: lbl.configure(background=get_theme_color('queue_bg')))
-                
-                self.queue_model_labels[model] = model_label
-        else:
-            # Collapsed view - show nothing below header
-            pass
-
-    def _on_overlay_hover_enter(self, event):
-        """Handle mouse enter on overlay."""
-        if self._overlay_collapse_after_id:
-            try:
-                self.root.after_cancel(self._overlay_collapse_after_id)
-            except Exception:
-                pass
-            self._overlay_collapse_after_id = None
-
-        if not self.queue_overlay_expanded:
-            self.queue_overlay_expanded = True
-            self._update_queue_overlay()
-
-    def _on_overlay_hover_leave(self, event):
-        """Handle mouse leave on overlay."""
-        # Debounce collapse to avoid disappearing while the overlay is rebuilding widgets
-        if self._overlay_rebuilding:
-            return
-
-        if self._overlay_collapse_after_id:
-            try:
-                self.root.after_cancel(self._overlay_collapse_after_id)
-            except Exception:
-                pass
-
-        self._overlay_collapse_after_id = self.root.after(150, self._maybe_collapse_overlay)
-
-    def _maybe_collapse_overlay(self):
-        """Collapse overlay if the pointer is outside the overlay."""
-        self._overlay_collapse_after_id = None
-        if self._overlay_rebuilding:
-            return
-
-        x, y = self.root.winfo_pointerxy()
-        widget_under_mouse = self.root.winfo_containing(x, y)
-
-        if widget_under_mouse is None:
-            should_collapse = True
-        else:
-            widget_name = str(widget_under_mouse)
-            should_collapse = not (
-                widget_under_mouse == self.queue_overlay_frame or
-                widget_name.startswith(str(self.queue_overlay_frame))
-            )
-
-        if not should_collapse:
-            return
-
-        if self.queue_overlay_expanded:
-            self.queue_overlay_expanded = False
-            self._update_queue_overlay()
-
-        if not self.queue_overlay_visible:
-            self.queue_overlay_frame.place(relx=1.0, rely=0.0, anchor='ne', x=-10, y=10)
-            self.queue_overlay_visible = True
-
-        self.queue_overlay_frame.lift()
-    
-    def _add_hover_effect(self, widget, normal_color, hover_color, underline=False):
-        """Add generic hover effect to a label."""
-        font_normal = ('Segoe UI', 8)
-        font_hover = ('Segoe UI', 8, 'underline') if underline else ('Segoe UI', 8)
-        
-        widget.bind('<Enter>', lambda e: widget.configure(foreground=hover_color, font=font_hover))
-        widget.bind('<Leave>', lambda e: widget.configure(foreground=normal_color, font=font_normal))
+        self.generation_filmstrip.update(active_requests, self.model_selection)
 
     def _clear_generations_history(self, all: bool = False):
         """Clear completed items from history."""
@@ -908,7 +547,28 @@ class ImageGeneratorApp:
         # Intersect to keep only valid ones
         self.handled_request_ids = self.handled_request_ids.intersection(remaining_ids)
         
-        self._update_queue_overlay()
+        self._update_generation_filmstrip()
+
+    def _clear_failed_generations(self):
+        """Clear failed generations from history and model error indicators."""
+        failed_models = {
+            r.model for r in self.generation_manager.get_all_requests()
+            if r.status == RequestStatus.FAILED
+        }
+        self.generation_manager.clear_failed()
+
+        remaining_failed_models = {
+            r.model for r in self.generation_manager.get_all_requests()
+            if r.status == RequestStatus.FAILED
+        }
+        for model in failed_models - remaining_failed_models:
+            self.model_selection.clear_model_error(model)
+
+        remaining = self.generation_manager.get_all_requests()
+        remaining_ids = {r.request_id for r in remaining}
+        self.handled_request_ids = self.handled_request_ids.intersection(remaining_ids)
+
+        self._update_generation_filmstrip()
     
     def _on_queue_model_click(self, request_id: str):
         """Handle click on a history item in the queue overlay."""
@@ -931,7 +591,7 @@ class ImageGeneratorApp:
             self.status_label.config(text=f"Viewing Result: {req.model}")
             
             # Update overlay to show seen status
-            self._update_queue_overlay()
+            self._update_generation_filmstrip()
     
     def _show_next_unseen(self):
         """Show the next (newest) unseen generation."""
@@ -1037,13 +697,9 @@ class ImageGeneratorApp:
             insertbackground=get_theme_color('text')
         )
         
-        # Update queue overlay if visible
-        if self.queue_overlay_visible:
-            self.queue_overlay_frame.configure(
-                background=get_theme_color('queue_bg'),
-                highlightbackground=get_theme_color('border')
-            )
-            self._update_queue_overlay()
+        # Update generation filmstrip
+        self.generation_filmstrip.apply_theme()
+        self._update_generation_filmstrip()
         
         # Update footer
         self.footer_frame.configure(style='Footer.TFrame')
@@ -1113,7 +769,7 @@ class ImageGeneratorApp:
             self._update_image_display()
             self.model_selection.set_model_viewed(model)
             self._mark_latest_completed_request_seen_for_model(model)
-            self._update_queue_overlay()
+            self._update_generation_filmstrip()
             self.status_label.config(text=StatusMessages.READY_CACHED)
         else:
             # Generate with the new model immediately
@@ -1121,7 +777,7 @@ class ImageGeneratorApp:
             if current_prompt:
                 self.model_selection.set_model_generating(model)
                 self.generation_manager.submit_request(model, current_prompt)
-                self._update_queue_overlay()
+                self._update_generation_filmstrip()
                 self.status_label.config(text=StatusMessages.GENERATING)
 
     def _mark_latest_completed_request_seen_for_model(self, model: str) -> None:
@@ -1189,7 +845,7 @@ class ImageGeneratorApp:
             self.model_selection.set_model_generating(model)
             self.generation_manager.submit_request(model, current_prompt)
             # Update overlay immediately (optional, but good for responsiveness)
-            self._update_queue_overlay()
+            self._update_generation_filmstrip()
             self.status_label.config(text=StatusMessages.GENERATING)
     
     def _on_enter(self, event):
@@ -1205,7 +861,7 @@ class ImageGeneratorApp:
                 model = self.model_selection.get_selected_model()
                 self.model_selection.set_model_generating(model)
                 self.generation_manager.submit_request(model, current_prompt)
-                self._update_queue_overlay()
+                self._update_generation_filmstrip()
                 self.status_label.config(text=StatusMessages.GENERATING)
         return 'break'  # Prevents the default behavior of adding a newline
     
@@ -1364,7 +1020,7 @@ class ImageGeneratorApp:
             model = self.model_selection.get_selected_model()
             self.model_selection.set_model_generating(model)
             self.generation_manager.submit_request(model, current_prompt)
-            self._update_queue_overlay()
+            self._update_generation_filmstrip()
             self.status_label.config(text=StatusMessages.GENERATING)
     
     def parallel_generate(self):
@@ -1392,7 +1048,7 @@ class ImageGeneratorApp:
             self.model_selection.set_model_generating(model)
         
         # Trigger overlay update immediately
-        self._update_queue_overlay()
+        self._update_generation_filmstrip()
         
         self.status_label.config(text=f"Queued images for {len(starred_models)} models...")
     
@@ -1457,7 +1113,7 @@ class ImageGeneratorApp:
         self.model_selection.clear_all_ticks()
         # Also clear any generating indicators
         self.model_selection.clear_all_generating()
-        self._update_queue_overlay()
+        self._update_generation_filmstrip()
     
     def check_display_queue(self):
         """Check for pending display updates and generation results."""
@@ -1475,7 +1131,7 @@ class ImageGeneratorApp:
             
             # Update Overlay with active requests
             # Update Overlay with all requests (for history)
-            self._update_queue_overlay_from_requests(all_requests)
+            self._update_generation_filmstrip_from_requests(all_requests)
 
             # Process completed requests
             for req in all_requests:
@@ -1537,7 +1193,7 @@ class ImageGeneratorApp:
         self.status_label.config(text=f"Error {model}: {error_msg}")
         LOGGER.error(f"Generation failed for {model}: {error_msg}")
 
-    def _update_queue_overlay_from_requests(self, active_requests):
+    def _update_generation_filmstrip_from_requests(self, active_requests):
         """Update the queue overlay based on active requests."""
         # Map active requests to models to reuse existing overlay logic structure
         # (Though we might want to make it request-based later)
@@ -1546,7 +1202,7 @@ class ImageGeneratorApp:
         # OR better, rewrite overlay logic to handle request objects.
         # Let's rewrite the overlay update method separately.
         # For now, just pass the list to the new overlay method.
-        self._update_queue_overlay(active_requests=active_requests)
+        self._update_generation_filmstrip(active_requests=active_requests)
 
 
     def show_toast(self, message: str, duration: int = 2000):

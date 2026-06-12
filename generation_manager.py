@@ -187,6 +187,18 @@ class GenerationManager:
                 del self._requests[rid]
                 if rid in self._futures:
                     del self._futures[rid]
+
+    def clear_failed(self):
+        """Clear failed requests from memory."""
+        with self._lock:
+            ids_to_remove = [
+                rid for rid, r in self._requests.items()
+                if r.status == RequestStatus.FAILED
+            ]
+            for rid in ids_to_remove:
+                del self._requests[rid]
+                if rid in self._futures:
+                    del self._futures[rid]
     
     def _execute_generation(self, request_id: str):
         """

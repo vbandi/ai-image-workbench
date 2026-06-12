@@ -151,6 +151,8 @@ MODEL_ABBREVIATIONS = {
 
 # UI Constants
 SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+FILMSTRIP_ITEM_SIZE = 72
+FILMSTRIP_PROMPT_TRUNCATE = 48
 
 # Application settings
 DEFAULT_MODEL = "fal-ai/flux/schnell"

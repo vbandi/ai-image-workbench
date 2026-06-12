@@ -5,14 +5,17 @@ Contains specialized UI components for model selection, controls, and prompt inp
 
 import tkinter as tk
 from tkinter import ttk, simpledialog
-from typing import Optional, Callable, Dict, Any
+from typing import Optional, Callable, Dict, Any, List
+from PIL import Image, ImageTk
 from config import (
     MODEL_CATEGORIES, MODEL_ABBREVIATIONS, SPINNER_FRAMES,
     BACKGROUND_COLOR, SELECTED_BUTTON_COLOR, HOVER_BUTTON_COLOR,
     ACTIVE_BUTTON_COLOR, BASE_FONT, BUTTON_FONT, BUTTON_BOLD_FONT,
     ACCENT_COLOR, ACCENT_HOVER_COLOR, TEXT_COLOR, PROMPT_FONT, HEADER_FONT,
+    FILMSTRIP_ITEM_SIZE, FILMSTRIP_PROMPT_TRUNCATE,
     get_theme_color, get_current_theme
 )
+from generation_manager import RequestStatus
 
 
 class ModelSelectionFrame(ttk.Frame):
@@ -440,6 +443,13 @@ class ModelSelectionFrame(ttk.Frame):
         self.models_with_errors[model] = error_message
         self._update_button_text(model)
         self._update_button_tooltip(model)
+
+    def clear_model_error(self, model: str):
+        """Clear the error indicator for a model."""
+        if model in self.models_with_errors:
+            del self.models_with_errors[model]
+            self._update_button_text(model)
+            self._update_button_tooltip(model)
     
     def clear_all_generating(self):
         """Clear all generating indicators (hourglasses)."""
@@ -866,6 +876,348 @@ class PromptInputFrame(ttk.Frame):
             # Restore original button text
             self.enhance_btn.configure(text="✨ Auto Enhance")
             self.enhance_dir_btn.configure(text="✨ Enhance...")
+
+
+class GenerationFilmstrip(tk.Frame):
+    """Horizontal scrollable filmstrip showing generation queue and history."""
+
+    ITEM_SIZE = FILMSTRIP_ITEM_SIZE
+    PROMPT_TRUNCATE = FILMSTRIP_PROMPT_TRUNCATE
+
+    def __init__(
+        self,
+        parent,
+        tooltip_manager,
+        on_item_click: Callable[[str], None],
+        on_prev_unseen: Callable[[], None],
+        on_next_unseen: Callable[[], None],
+        on_clear_all: Callable[[], None],
+        on_clear_seen: Callable[[], None],
+        on_clear_failed: Callable[[], None],
+    ):
+        super().__init__(parent)
+        self.tooltip_manager = tooltip_manager
+        self.on_item_click = on_item_click
+        self.on_prev_unseen = on_prev_unseen
+        self.on_next_unseen = on_next_unseen
+        self.on_clear_all = on_clear_all
+        self.on_clear_seen = on_clear_seen
+        self.on_clear_failed = on_clear_failed
+        self._thumbnail_images: Dict[str, ImageTk.PhotoImage] = {}
+        self._last_hash = ""
+        self._create_widgets()
+
+    def _create_widgets(self):
+        bg = get_theme_color('queue_bg')
+        self.configure(
+            background=bg,
+            highlightbackground=get_theme_color('border'),
+            highlightthickness=1,
+        )
+
+        self.header_frame = tk.Frame(self, bg=bg)
+        self.header_frame.pack(fill='x', padx=8, pady=(6, 4))
+
+        scroll_container = tk.Frame(self, bg=bg)
+        scroll_container.pack(fill='x', padx=8, pady=(0, 6))
+
+        self.canvas = tk.Canvas(
+            scroll_container,
+            bg=bg,
+            height=self.ITEM_SIZE + 10,
+            highlightthickness=0,
+        )
+        self.h_scroll = ttk.Scrollbar(
+            scroll_container,
+            orient='horizontal',
+            command=self.canvas.xview,
+            style='Horizontal.TScrollbar',
+        )
+        self.canvas.configure(xscrollcommand=self.h_scroll.set)
+        self.canvas.pack(side='top', fill='x', expand=True)
+        self.h_scroll.pack(side='bottom', fill='x')
+
+        self.items_frame = tk.Frame(self.canvas, bg=bg)
+        self._canvas_window = self.canvas.create_window(
+            (0, 0), window=self.items_frame, anchor='nw'
+        )
+        self.items_frame.bind('<Configure>', self._on_items_configure)
+        self.canvas.bind('<Configure>', self._on_canvas_configure)
+        self._bind_horizontal_scroll(self.canvas)
+        self._bind_horizontal_scroll(self.items_frame)
+
+    def _on_items_configure(self, _event=None):
+        self.canvas.configure(scrollregion=self.canvas.bbox('all'))
+
+    def _on_canvas_configure(self, event):
+        self.canvas.itemconfigure(self._canvas_window, height=event.height)
+
+    def _bind_horizontal_scroll(self, widget):
+        def on_mousewheel(event):
+            if event.num == 5 or event.delta < 0:
+                self.canvas.xview_scroll(1, 'units')
+            elif event.num == 4 or event.delta > 0:
+                self.canvas.xview_scroll(-1, 'units')
+
+        widget.bind('<MouseWheel>', on_mousewheel)
+        widget.bind('<Shift-MouseWheel>', on_mousewheel)
+        widget.bind('<Button-4>', on_mousewheel)
+        widget.bind('<Button-5>', on_mousewheel)
+
+    def _format_model_name(self, model: str) -> str:
+        display_name = model.replace("fal-ai/", "").replace("/", " ").title()
+        return MODEL_ABBREVIATIONS.get(display_name, display_name)
+
+    def _truncate_prompt(self, prompt: str) -> str:
+        prompt = prompt.strip()
+        if len(prompt) <= self.PROMPT_TRUNCATE:
+            return prompt
+        return prompt[: self.PROMPT_TRUNCATE - 1].rstrip() + "…"
+
+    def _build_tooltip(self, req) -> str:
+        model_name = self._format_model_name(req.model)
+        return f"{model_name}\n{req.prompt}"
+
+    def _add_link_button(self, parent, text: str, command: Callable[[], None]):
+        btn = tk.Label(
+            parent,
+            text=text,
+            font=('Segoe UI', 8),
+            background=get_theme_color('queue_bg'),
+            foreground=get_theme_color('link_color'),
+            cursor='hand2',
+        )
+        btn.pack(side='left', padx=4)
+        btn.bind('<Button-1>', lambda _e: command())
+        self._add_hover_effect(
+            btn,
+            get_theme_color('link_color'),
+            get_theme_color('link_hover'),
+            underline=True,
+        )
+        return btn
+
+    def _add_action_button(self, parent, text: str, command: Callable[[], None]):
+        btn = tk.Label(
+            parent,
+            text=text,
+            font=('Segoe UI', 8),
+            background=get_theme_color('queue_bg'),
+            foreground=get_theme_color('accent'),
+            cursor='hand2',
+        )
+        btn.pack(side='right', padx=(5, 0))
+        btn.bind('<Button-1>', lambda _e: command())
+        self._add_hover_effect(
+            btn,
+            get_theme_color('accent'),
+            get_theme_color('accent_hover'),
+            underline=True,
+        )
+        return btn
+
+    def _add_hover_effect(self, widget, normal_color, hover_color, underline=False):
+        font_normal = ('Segoe UI', 8)
+        font_hover = ('Segoe UI', 8, 'underline') if underline else ('Segoe UI', 8)
+
+        widget.bind(
+            '<Enter>',
+            lambda _e: widget.configure(foreground=hover_color, font=font_hover),
+        )
+        widget.bind(
+            '<Leave>',
+            lambda _e: widget.configure(foreground=normal_color, font=font_normal),
+        )
+
+    def _is_viewed(self, req, model_selection, latest_completed_by_model: Dict[str, str]) -> bool:
+        if req.seen:
+            return True
+        if model_selection is None:
+            return False
+        model_is_viewed = req.model in getattr(model_selection, 'models_viewed', set())
+        is_latest = latest_completed_by_model.get(req.model) == req.request_id
+        return model_is_viewed and is_latest
+
+    def _compute_hash(self, requests: List, model_selection) -> str:
+        parts: List[str] = [str(len(requests))]
+        try:
+            viewed_models = sorted(getattr(model_selection, 'models_viewed', set()))
+            ticked_models = sorted(getattr(model_selection, 'models_with_ticks', set()))
+        except Exception:
+            viewed_models = []
+            ticked_models = []
+        parts.append('viewed:' + ','.join(viewed_models))
+        parts.append('ticked:' + ','.join(ticked_models))
+        for req in sorted(requests, key=lambda r: r.request_id):
+            parts.append(f"{req.request_id}:{req.status.name}:{req.seen}")
+        return '|'.join(parts)
+
+    def update(self, requests: List, model_selection=None):
+        current_hash = self._compute_hash(requests, model_selection)
+        if current_hash == self._last_hash:
+            return
+        self._last_hash = current_hash
+
+        bg = get_theme_color('queue_bg')
+        self.configure(background=bg, highlightbackground=get_theme_color('border'))
+        self.header_frame.configure(bg=bg)
+        self.canvas.configure(bg=bg)
+        self.items_frame.configure(bg=bg)
+
+        for widget in self.header_frame.winfo_children():
+            widget.destroy()
+        for widget in self.items_frame.winfo_children():
+            widget.destroy()
+        self._thumbnail_images.clear()
+
+        pending_count = sum(
+            1 for r in requests
+            if r.status in (RequestStatus.QUEUED, RequestStatus.PROCESSING)
+        )
+        title_text = f"Generations ({pending_count})" if pending_count else "Generations"
+        tk.Label(
+            self.header_frame,
+            text=title_text,
+            font=('Segoe UI', 9, 'bold'),
+            background=bg,
+            foreground=get_theme_color('text'),
+        ).pack(side='left')
+
+        nav_frame = tk.Frame(self.header_frame, bg=bg)
+        nav_frame.pack(side='right', padx=(0, 8))
+        self._add_link_button(nav_frame, 'Prev Unseen', self.on_prev_unseen)
+        self._add_link_button(nav_frame, 'Next Unseen', self.on_next_unseen)
+
+        btn_frame = tk.Frame(self.header_frame, bg=bg)
+        btn_frame.pack(side='right')
+        finished = [
+            r for r in requests
+            if r.status in (RequestStatus.COMPLETED, RequestStatus.FAILED, RequestStatus.CANCELLED)
+        ]
+        if finished:
+            self._add_action_button(btn_frame, 'Clear All', self.on_clear_all)
+            if any(r.seen for r in requests):
+                self._add_action_button(btn_frame, 'Clear Seen', self.on_clear_seen)
+        if any(r.status == RequestStatus.FAILED for r in requests):
+            self._add_action_button(btn_frame, 'Clear Failed', self.on_clear_failed)
+
+        sorted_items = sorted(requests, key=lambda r: r.created_at, reverse=True)
+        latest_completed_by_model: Dict[str, str] = {}
+        for req in sorted_items:
+            if req.status == RequestStatus.COMPLETED and req.model not in latest_completed_by_model:
+                latest_completed_by_model[req.model] = req.request_id
+
+        if not sorted_items:
+            empty_label = tk.Label(
+                self.items_frame,
+                text="No generations yet",
+                font=('Segoe UI', 9),
+                background=bg,
+                foreground=get_theme_color('status_pending'),
+            )
+            empty_label.pack(side='left', padx=4, pady=4)
+            self.tooltip_manager.add_tooltip(empty_label, 'Generated images will appear here')
+            return
+
+        for req in sorted_items:
+            self._create_tile(req, model_selection, latest_completed_by_model, bg)
+
+    def _create_tile(self, req, model_selection, latest_completed_by_model, bg):
+        is_unseen_completed = (
+            req.status == RequestStatus.COMPLETED
+            and not self._is_viewed(req, model_selection, latest_completed_by_model)
+        )
+        border_color = get_theme_color('accent') if is_unseen_completed else get_theme_color('border')
+
+        tile = tk.Frame(
+            self.items_frame,
+            bg=border_color,
+            width=self.ITEM_SIZE + 4,
+            height=self.ITEM_SIZE + 4,
+        )
+        tile.pack(side='left', padx=3, pady=2)
+        tile.pack_propagate(False)
+
+        inner = tk.Frame(tile, bg=bg, width=self.ITEM_SIZE, height=self.ITEM_SIZE)
+        inner.place(relx=0.5, rely=0.5, anchor='center')
+        inner.pack_propagate(False)
+
+        tooltip_text = self._build_tooltip(req)
+        tooltip_widgets = [tile, inner]
+
+        if req.status in (RequestStatus.QUEUED, RequestStatus.PROCESSING):
+            prompt_label = tk.Label(
+                inner,
+                text=self._truncate_prompt(req.prompt),
+                font=('Segoe UI', 8),
+                background=bg,
+                foreground=get_theme_color('status_processing'),
+                wraplength=self.ITEM_SIZE - 8,
+                justify='center',
+            )
+            prompt_label.pack(expand=True, fill='both', padx=4, pady=4)
+            tooltip_widgets.append(prompt_label)
+        elif req.status == RequestStatus.COMPLETED:
+            thumb_source = req.result_image
+            if thumb_source:
+                try:
+                    thumb_img = thumb_source.copy()
+                    thumb_img.thumbnail((self.ITEM_SIZE, self.ITEM_SIZE), Image.LANCZOS)
+                    thumb_photo = ImageTk.PhotoImage(thumb_img)
+                    self._thumbnail_images[req.request_id] = thumb_photo
+                    thumb_label = tk.Label(
+                        inner,
+                        image=thumb_photo,
+                        background=bg,
+                        cursor='hand2',
+                    )
+                    thumb_label.pack(expand=True)
+                    tooltip_widgets.append(thumb_label)
+                    thumb_label.bind(
+                        '<Button-1>',
+                        lambda _e, rid=req.request_id: self.on_item_click(rid),
+                    )
+                    self._bind_tile_hover(inner, thumb_label, bg)
+                except Exception:
+                    self._create_fallback_label(inner, '✓', get_theme_color('status_success'), tooltip_widgets)
+            else:
+                self._create_fallback_label(inner, '✓', get_theme_color('status_success'), tooltip_widgets)
+        elif req.status == RequestStatus.FAILED:
+            self._create_fallback_label(inner, '✕', get_theme_color('status_error'), tooltip_widgets, font_size=22)
+        elif req.status == RequestStatus.CANCELLED:
+            self._create_fallback_label(inner, '⊘', get_theme_color('status_cancelled'), tooltip_widgets, font_size=18)
+        else:
+            self._create_fallback_label(inner, '?', get_theme_color('text'), tooltip_widgets)
+
+        self.tooltip_manager.set_tooltip_region(tooltip_widgets, tooltip_text)
+
+    def _create_fallback_label(self, parent, text, color, tooltip_widgets, font_size=16):
+        label = tk.Label(
+            parent,
+            text=text,
+            font=('Segoe UI', font_size, 'bold'),
+            background=get_theme_color('queue_bg'),
+            foreground=color,
+        )
+        label.pack(expand=True)
+        tooltip_widgets.append(label)
+
+    def _bind_tile_hover(self, inner, label, bg):
+        highlight = get_theme_color('queue_highlight')
+
+        def on_enter(_event):
+            inner.configure(background=highlight)
+            label.configure(background=highlight)
+
+        def on_leave(_event):
+            inner.configure(background=bg)
+            label.configure(background=bg)
+
+        label.bind('<Enter>', on_enter, add='+')
+        label.bind('<Leave>', on_leave, add='+')
+
+    def apply_theme(self):
+        self._last_hash = ""
 
 
 class TooltipManager:
