@@ -364,6 +364,18 @@ MODEL_REGISTRY: Dict[str, ModelConfig] = {
         },
         "parser": "images_array",
     },
+    "fal-ai/boogu-image": {
+        "arguments": {
+            "num_images": 1,
+            "image_size": "landscape_4_3",
+            "enable_safety_checker": False,
+            "output_format": "jpeg",
+            "guidance_scale": 4,
+            "num_inference_steps": 30,
+            "sync_mode": True,
+        },
+        "parser": "images_array",
+    },
     "xai/grok-imagine-image": {
         "arguments": {
             "num_images": 1,
@@ -560,7 +572,7 @@ MODEL_REGISTRY: Dict[str, ModelConfig] = {
         "parser": "images_array",
     },
 
-    # Krea v2
+    # Krea models
     "krea/v2/large/text-to-image": {
         "arguments": {
             "aspect_ratio": "4:3",
@@ -582,6 +594,18 @@ MODEL_REGISTRY: Dict[str, ModelConfig] = {
             "image_size": None,
             "sync_mode": None,
             "safety_tolerance": 5,
+        },
+        "parser": "images_array",
+    },
+    "fal-ai/krea-2/turbo": {
+        "arguments": {
+            "image_size": "square_hd",
+            "num_images": 1,
+            "acceleration": "none",
+            "enable_safety_checker": False,
+            "enable_prompt_expansion": False,
+            "output_format": "png",
+            "sync_mode": True,
         },
         "parser": "images_array",
     },
@@ -641,6 +665,7 @@ MODELS = [
     "fal-ai/qwen-image-2/text-to-image",
     "fal-ai/qwen-image-2/pro/text-to-image",
     "fal-ai/glm-image",
+    "fal-ai/boogu-image",
     "xai/grok-imagine-image",
     "fal-ai/hunyuan-image/v3/instruct/text-to-image",
     "microsoft/mai-image-2.5",
@@ -655,6 +680,7 @@ MODELS = [
     "fal-ai/phota",
     "krea/v2/large/text-to-image",
     "krea/v2/medium/text-to-image",
+    "fal-ai/krea-2/turbo",
 ]
 
 

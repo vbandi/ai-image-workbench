@@ -36,6 +36,7 @@ MODEL_CATEGORIES = {
     "Krea": [
         "krea/v2/large/text-to-image",
         "krea/v2/medium/text-to-image",
+        "fal-ai/krea-2/turbo",
     ],
     "Other": [
         "fal-ai/stable-diffusion-v35-large",
@@ -62,6 +63,7 @@ MODEL_CATEGORIES = {
         "fal-ai/qwen-image-2/text-to-image",
         "fal-ai/qwen-image-2/pro/text-to-image",
         "fal-ai/glm-image",
+        "fal-ai/boogu-image",
         "xai/grok-imagine-image",
         "fal-ai/hunyuan-image/v3/instruct/text-to-image",
         "microsoft/mai-image-2.5",
@@ -136,6 +138,7 @@ MODEL_ABBREVIATIONS = {
     "Bria Fibo Generate": "BRIA Fibo",
     "Longcat-Image": "Longcat",
     "Glm-Image": "GLM Image",
+    "Boogu-Image": "Boogu Image",
     # ImagineArt models
     "Imagineart Imagineart 1.5 Pro Preview Text To Image": "ImagineArt 1.5 Pro",
     # Kling Image models
@@ -147,6 +150,7 @@ MODEL_ABBREVIATIONS = {
     # Krea v2
     "Krea V2 Large Text-To-Image": "Krea 2 Large",
     "Krea V2 Medium Text-To-Image": "Krea 2 Medium",
+    "Krea-2 Turbo": "Krea 2 Turbo",
 }
 
 # UI Constants
