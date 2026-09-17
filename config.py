@@ -38,18 +38,24 @@ MODEL_CATEGORIES = {
         "krea/v2/medium/text-to-image",
         "fal-ai/krea-2/turbo",
     ],
+    "Bytedance": [
+        "fal-ai/bytedance/seedream/v3/text-to-image",
+        "fal-ai/bytedance/seedream/v4/text-to-image",
+        "fal-ai/bytedance/seedream/v4.5/text-to-image",
+        "bytedance/seedream/v5/pro/text-to-image",
+        "bytedance/seedream/v5/lite/text-to-image",
+    ],
     "Other": [
         "fal-ai/stable-diffusion-v35-large",
         "fal-ai/stable-diffusion-v35-medium",
         "fal-ai/ideogram/v2",
+        "ideogram/v4/instant",
+        "ideogram/v4/fast",
         "fal-ai/recraft-20b",
         "fal-ai/sana",
         "fal-ai/luma-photon",
         "luma/agent/uni-1/v1/text-to-image",
         "luma/agent/uni-1/v1/max",
-        "fal-ai/bytedance/seedream/v3/text-to-image",
-        "fal-ai/bytedance/seedream/v4/text-to-image",
-        "fal-ai/bytedance/seedream/v4.5/text-to-image",
         "fal-ai/wan/v2.2-5b/text-to-image",
         "wan/v2.6/text-to-image",
         "fal-ai/wan/v2.7/text-to-image",
@@ -57,16 +63,21 @@ MODEL_CATEGORIES = {
         "fal-ai/gemini-3-pro-image-preview",
         "fal-ai/nano-banana",
         "fal-ai/nano-banana-2",
+        "google/nano-banana-2-lite",
+        "google/nano-banana-lite",
         "fal-ai/qwen-image",
         "fal-ai/qwen-image-2512",
         "fal-ai/qwen-image-max/text-to-image",
         "fal-ai/qwen-image-2/text-to-image",
         "fal-ai/qwen-image-2/pro/text-to-image",
+        "alibaba/qwen-image-3/text-to-image",
         "fal-ai/glm-image",
         "fal-ai/boogu-image",
         "xai/grok-imagine-image",
+        "xai/grok-imagine-image/v2.0/text-to-image",
         "fal-ai/hunyuan-image/v3/instruct/text-to-image",
         "microsoft/mai-image-2.5",
+        "microsoft/mai-image-2.5-pro",
 "bria/fibo/generate",
         "fal-ai/z-image/base",
         "fal-ai/z-image/turbo",
@@ -74,7 +85,10 @@ MODEL_CATEGORIES = {
         "imagineart/imagineart-1.5-pro-preview/text-to-image",
         "fal-ai/kling-image/v3/text-to-image",
         "fal-ai/bitdance",
-        "fal-ai/phota"
+        "fal-ai/phota",
+        "openai/gpt-image-2.5/flare/text-to-image",
+        "openai/gpt-image-2.5/sunburst/text-to-image",
+        "bria/fibo-gen-1.5/text-to-image"
     ]
 }
 
@@ -111,11 +125,16 @@ MODEL_ABBREVIATIONS = {
     "Luma Agent Uni-1 V1 Text-To-Image": "Luma Uni-1",
     "Luma Agent Uni-1 V1 Max": "Luma Uni-1 Max",
     "Ideogram V2": "Ideogram v2",
+    "Ideogram V4 Instant": "Ideogram v4 Instant",
+    "Ideogram V4 Fast": "Ideogram v4 Fast",
     "Recraft 20B": "Recraft",
     "Sana": "Sana",
-    "Bytedance Seedream V3 Text To Image": "Seedream v3",
-    "Bytedance Seedream V4 Text To Image": "Seedream v4",
-    "Bytedance Seedream V4.5 Text To Image": "Seedream v4.5",
+    # Bytedance / Seedream models
+    "Bytedance Seedream V3 Text-To-Image": "Seedream v3",
+    "Bytedance Seedream V4 Text-To-Image": "Seedream v4",
+    "Bytedance Seedream V4.5 Text-To-Image": "Seedream v4.5",
+    "Bytedance Seedream V5 Pro Text-To-Image": "Seedream v5 Pro",
+    "Bytedance Seedream V5 Lite Text-To-Image": "Seedream v5 Lite",
     "Wan V2.2-5B Text To Image": "WAN v2.2",
     "Wan V2.6 Text To Image": "WAN v2.6",
     "Wan V2.7 Text-To-Image": "WAN v2.7",
@@ -123,19 +142,25 @@ MODEL_ABBREVIATIONS = {
     "Gemini 3 Pro Image Preview": "Gemini 3 Pro",
     "Nano Banana": "Nano Banana",
     "Nano-Banana-2": "Nano Banana 2",
+    "Google Nano-Banana-2-Lite": "Nano Banana 2 Lite",
+    "Google Nano-Banana-Lite": "Nano Banana Lite",
     "Qwen Image": "Qwen Image",
     "Qwen Image 2512": "Qwen 2.5",
     "Qwen-Image-Max Text-To-Image": "Qwen Image Max",
     "Qwen-Image-2 Text-To-Image": "Qwen Image 2",
     "Qwen-Image-2 Pro Text-To-Image": "Qwen Image 2 Pro",
+    "Alibaba Qwen-Image-3 Text-To-Image": "Qwen Image 3",
     "Z-Image Turbo": "Z-Image Turbo",
     "Xai Grok-Imagine-Image": "Grok Imagine",
+    "Xai Grok-Imagine-Image V2.0 Text-To-Image": "Grok Imagine 2.0",
     "Hunyuan-Image V3 Instruct Text-To-Image": "Hunyuan V3 Instruct",
     "Microsoft Mai-Image 2.5": "MAI Image 2.5",
+    "Microsoft Mai-Image 2.5-Pro": "MAI Image 2.5 Pro",
     "Qwen-Image-Max Text-To-Image": "Qwen Image Max",
     "Z-Image Base": "Z-Image Base",
 # BRIA models
     "Bria Fibo Generate": "BRIA Fibo",
+    "Bria Fibo-Gen-1.5 Text-To-Image": "BRIA Fibo 1.5",
     "Longcat-Image": "Longcat",
     "Glm-Image": "GLM Image",
     "Boogu-Image": "Boogu Image",
@@ -151,6 +176,9 @@ MODEL_ABBREVIATIONS = {
     "Krea V2 Large Text-To-Image": "Krea 2 Large",
     "Krea V2 Medium Text-To-Image": "Krea 2 Medium",
     "Krea-2 Turbo": "Krea 2 Turbo",
+    # OpenAI GPT Image 2.5
+    "Openai Gpt-Image-2.5 Flare Text-To-Image": "GPT Image 2.5 Flare",
+    "Openai Gpt-Image-2.5 Sunburst Text-To-Image": "GPT Image 2.5 Sunburst",
 }
 
 # UI Constants
@@ -160,7 +188,7 @@ FILMSTRIP_PROMPT_TRUNCATE = 48
 
 # Application settings
 DEFAULT_MODEL = "fal-ai/flux/schnell"
-AUTO_GENERATE_MODELS = ["fal-ai/flux/schnell", "fal-ai/flux-1/srpo", "fal-ai/flux-2/flash", "fal-ai/flux-2/klein/9b/base", "fal-ai/flux-2/klein/4b", "fal-ai/flux-2/klein/4b/base"]
+AUTO_GENERATE_MODELS = ["fal-ai/flux/schnell", "fal-ai/flux-1/srpo", "fal-ai/flux-2/flash", "fal-ai/flux-2/klein/9b/base", "fal-ai/flux-2/klein/4b", "fal-ai/flux-2/klein/4b/base", "ideogram/v4/instant", "ideogram/v4/fast"]
 
 # Window settings
 MIN_WINDOW_WIDTH = 1000

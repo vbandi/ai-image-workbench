@@ -127,6 +127,29 @@ MODEL_REGISTRY: Dict[str, ModelConfig] = {
         },
         "parser": "ideogram",
     },
+    "ideogram/v4/instant": {
+        "arguments": {
+            "image_size": "landscape_4_3",
+            "expansion_model": "None",
+            "enable_safety_checker": False,
+            "output_format": "jpeg",
+            "sync_mode": True,
+            "safety_tolerance": None,
+        },
+        "parser": "images_array",
+    },
+    "ideogram/v4/fast": {
+        "arguments": {
+            "image_size": "landscape_4_3",
+            "rendering_speed": "BALANCED",
+            "expansion_model": "None",
+            "enable_safety_checker": False,
+            "output_format": "jpeg",
+            "sync_mode": True,
+            "safety_tolerance": None,
+        },
+        "parser": "images_array",
+    },
     
     # Imagen4 variants - images array with URL objects
     "fal-ai/imagen4/preview": {
@@ -282,6 +305,28 @@ MODEL_REGISTRY: Dict[str, ModelConfig] = {
         },
         "parser": "images_array",
     },
+    "bytedance/seedream/v5/pro/text-to-image": {
+        "arguments": {
+            "num_images": 1,
+            "image_size": "landscape_4_3",
+            "enable_safety_checker": False,
+            "output_format": "jpeg",
+            "sync_mode": True,
+            "safety_tolerance": None,
+        },
+        "parser": "images_array",
+    },
+    "bytedance/seedream/v5/lite/text-to-image": {
+        "arguments": {
+            "num_images": 1,
+            "max_images": 1,
+            "image_size": "landscape_4_3",
+            "enable_safety_checker": False,
+            "sync_mode": True,
+            "safety_tolerance": None,
+        },
+        "parser": "images_array",
+    },
     
     # WAN - single image response format
     "fal-ai/wan/v2.2-5b/text-to-image": {
@@ -324,6 +369,28 @@ MODEL_REGISTRY: Dict[str, ModelConfig] = {
         "parser": "images_array",
     },
     "fal-ai/nano-banana-2": {
+        "arguments": {
+            "num_images": 1,
+            "aspect_ratio": "4:3",
+            "output_format": "png",
+            "safety_tolerance": "4",
+            "image_size": None,
+            "enable_safety_checker": False,
+        },
+        "parser": "images_array",
+    },
+    "google/nano-banana-2-lite": {
+        "arguments": {
+            "num_images": 1,
+            "aspect_ratio": "4:3",
+            "output_format": "png",
+            "safety_tolerance": "4",
+            "image_size": None,
+            "enable_safety_checker": False,
+        },
+        "parser": "images_array",
+    },
+    "google/nano-banana-lite": {
         "arguments": {
             "num_images": 1,
             "aspect_ratio": "4:3",
@@ -385,6 +452,22 @@ MODEL_REGISTRY: Dict[str, ModelConfig] = {
         },
         "parser": "images_array",
     },
+    "xai/grok-imagine-image/v2.0/text-to-image": {
+        "arguments": {
+            "num_images": 1,
+            "resolution": "1k",
+            "aspect_ratio": "4:3",
+            "sync_mode": True,
+            "quality": "medium",
+            "output_format": "jpeg",
+            "image_size": None,
+            "enable_safety_checker": None,
+            "enable_prompt_expansion": None,
+            "expand_prompt": None,
+            "safety_tolerance": None,
+        },
+        "parser": "images_array",
+    },
     "fal-ai/hunyuan-image/v3/instruct/text-to-image": {
         "arguments": {
             "num_images": 1,
@@ -404,6 +487,20 @@ MODEL_REGISTRY: Dict[str, ModelConfig] = {
             "output_format": "png",
             "enable_safety_checker": False,
             "sync_mode": True,
+        },
+        "parser": "images_array",
+    },
+    "microsoft/mai-image-2.5-pro": {
+        "arguments": {
+            "num_images": 1,
+            "aspect_ratio": "auto",
+            "output_format": "png",
+            "sync_mode": True,
+            "image_size": None,
+            "enable_safety_checker": None,
+            "enable_prompt_expansion": None,
+            "expand_prompt": None,
+            "safety_tolerance": None,
         },
         "parser": "images_array",
     },
@@ -439,6 +536,19 @@ MODEL_REGISTRY: Dict[str, ModelConfig] = {
         },
         "parser": "images_array",
     },
+    "alibaba/qwen-image-3/text-to-image": {
+        "arguments": {
+            "num_images": 1,
+            "image_size": "landscape_4_3",
+            "enable_prompt_expansion": False,
+            "enable_safety_checker": False,
+            "output_format": "png",
+            "sync_mode": True,
+            "expand_prompt": None,
+            "safety_tolerance": None,
+        },
+        "parser": "images_array",
+    },
     "fal-ai/z-image/base": {
         "arguments": {
             "num_images": 1,
@@ -456,6 +566,19 @@ MODEL_REGISTRY: Dict[str, ModelConfig] = {
     "bria/fibo/generate": {
         "arguments": {
             "aspect_ratio": "4:3",
+        },
+        "parser": "single_image",
+    },
+    "bria/fibo-gen-1.5/text-to-image": {
+        "arguments": {
+            "aspect_ratio": "4:3",
+            "sync_mode": True,
+            "num_images": None,
+            "enable_safety_checker": None,
+            "enable_prompt_expansion": None,
+            "expand_prompt": None,
+            "image_size": None,
+            "safety_tolerance": None,
         },
         "parser": "single_image",
     },
@@ -609,6 +732,36 @@ MODEL_REGISTRY: Dict[str, ModelConfig] = {
         },
         "parser": "images_array",
     },
+
+    # OpenAI GPT Image 2.5
+    "openai/gpt-image-2.5/flare/text-to-image": {
+        "arguments": {
+            "num_images": 1,
+            "image_size": "landscape_4_3",
+            "quality": "high",
+            "output_format": "png",
+            "sync_mode": True,
+            "enable_safety_checker": None,
+            "enable_prompt_expansion": None,
+            "expand_prompt": None,
+            "safety_tolerance": None,
+        },
+        "parser": "images_array",
+    },
+    "openai/gpt-image-2.5/sunburst/text-to-image": {
+        "arguments": {
+            "num_images": 1,
+            "image_size": "landscape_4_3",
+            "quality": "high",
+            "output_format": "png",
+            "sync_mode": True,
+            "enable_safety_checker": None,
+            "enable_prompt_expansion": None,
+            "expand_prompt": None,
+            "safety_tolerance": None,
+        },
+        "parser": "images_array",
+    },
 }
 
 # Parser function mapping
@@ -647,11 +800,15 @@ MODELS = [
     "luma/agent/uni-1/v1/text-to-image",
     "luma/agent/uni-1/v1/max",
     "fal-ai/ideogram/v2",
+    "ideogram/v4/instant",
+    "ideogram/v4/fast",
     "fal-ai/recraft-20b",
     "fal-ai/sana",
     "fal-ai/bytedance/seedream/v3/text-to-image",
     "fal-ai/bytedance/seedream/v4/text-to-image",
     "fal-ai/bytedance/seedream/v4.5/text-to-image",
+    "bytedance/seedream/v5/pro/text-to-image",
+    "bytedance/seedream/v5/lite/text-to-image",
     "fal-ai/wan/v2.2-5b/text-to-image",
     "wan/v2.6/text-to-image",
     "fal-ai/wan/v2.7/text-to-image",
@@ -659,16 +816,21 @@ MODELS = [
     "fal-ai/gemini-3-pro-image-preview",
     "fal-ai/nano-banana",
     "fal-ai/nano-banana-2",
+    "google/nano-banana-2-lite",
+    "google/nano-banana-lite",
     "fal-ai/qwen-image",
     "fal-ai/qwen-image-2512",
     "fal-ai/qwen-image-max/text-to-image",
     "fal-ai/qwen-image-2/text-to-image",
     "fal-ai/qwen-image-2/pro/text-to-image",
+    "alibaba/qwen-image-3/text-to-image",
     "fal-ai/glm-image",
     "fal-ai/boogu-image",
     "xai/grok-imagine-image",
+    "xai/grok-imagine-image/v2.0/text-to-image",
     "fal-ai/hunyuan-image/v3/instruct/text-to-image",
     "microsoft/mai-image-2.5",
+    "microsoft/mai-image-2.5-pro",
 "bria/fibo/generate",
     "fal-ai/z-image/base",
     "fal-ai/z-image/turbo",
@@ -681,6 +843,9 @@ MODELS = [
     "krea/v2/large/text-to-image",
     "krea/v2/medium/text-to-image",
     "fal-ai/krea-2/turbo",
+    "openai/gpt-image-2.5/flare/text-to-image",
+    "openai/gpt-image-2.5/sunburst/text-to-image",
+    "bria/fibo-gen-1.5/text-to-image",
 ]
 
 
